@@ -363,7 +363,7 @@ export class ExpoSDKManager {
   /**
    * モジュールのAPIメソッド一覧取得
    */
-  async getAPIMethodsANTS(moduleName: string, sdkVersion: string = 'latest'): Promise<ExpoSDKMethod[]> {
+  async getAPIMethods(moduleName: string, sdkVersion: string = 'latest'): Promise<ExpoSDKMethod[]> {
     const module = await this.getSDKModule(moduleName, sdkVersion);
     return module.methods;
   }

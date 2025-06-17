@@ -127,6 +127,7 @@ export class ExpoSearchEngine {
   }
 
   async searchWithTypoTolerance(query: string, maxTypos = 2): Promise<SearchResult> {
+    const startTime = Date.now();
     const searchQuery: SearchQuery = {
       query,
       limit: 20
@@ -153,7 +154,7 @@ export class ExpoSearchEngine {
         documents,
         totalCount: typoResult.found || 0,
         facets: {},
-        searchTime: Date.now() - Date.now()
+        searchTime: Date.now() - startTime
       };
     } catch (error) {
       console.error('Typo tolerance search failed:', error);
@@ -162,6 +163,7 @@ export class ExpoSearchEngine {
   }
 
   async searchByCodeBlock(codeQuery: string): Promise<SearchResult> {
+    const startTime = Date.now();
     const searchQuery: SearchQuery = {
       query: codeQuery,
       limit: 10
@@ -181,7 +183,7 @@ export class ExpoSearchEngine {
         documents,
         totalCount: result.found || 0,
         facets: {},
-        searchTime: Date.now() - Date.now()
+        searchTime: Date.now() - startTime
       };
     } catch (error) {
       console.error('Code block search failed:', error);
@@ -388,6 +390,7 @@ export class ExpoSearchEngine {
 
   // 高度なコードブロック検索
   async searchByCodeBlockAdvanced(codeQuery: string, language?: string): Promise<SearchResult> {
+    const startTime = Date.now();
     const searchQuery: SearchQuery = {
       query: codeQuery,
       limit: 15
@@ -435,7 +438,7 @@ export class ExpoSearchEngine {
         documents: enhancedDocuments,
         totalCount: result.found || 0,
         facets: {},
-        searchTime: Date.now() - Date.now()
+        searchTime: Date.now() - startTime
       };
     } catch (error) {
       console.error('Advanced code block search failed:', error);

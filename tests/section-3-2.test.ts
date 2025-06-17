@@ -121,7 +121,7 @@ describe('Section 3.2: SDK・API管理機能', () => {
 
   describe('API リファレンス処理', () => {
     test('API メソッド抽出', async () => {
-      const methods = await sdkManager.getAPIMethodsANTS('camera', 'latest');
+      const methods = await sdkManager.getAPIMethods('camera', 'latest');
       
       expect(methods.length).toBeGreaterThan(0);
       
@@ -134,7 +134,7 @@ describe('Section 3.2: SDK・API管理機能', () => {
     });
 
     test('シグネチャ解析', async () => {
-      const methods = await sdkManager.getAPIMethodsANTS('camera', 'latest');
+      const methods = await sdkManager.getAPIMethods('camera', 'latest');
       const method = methods[0];
       
       const analysis = await sdkManager.analyzeMethodSignature(method);
