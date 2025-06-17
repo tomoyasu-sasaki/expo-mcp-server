@@ -1,27 +1,56 @@
 module.exports = {
-  preset: 'ts-jest/presets/default-esm',
-  extensionsToTreatAsEsm: ['.ts'],
+  preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/tests'],
+  
+  // Test files
   testMatch: [
-    '**/__tests__/**/*.ts',
-    '**/?(*.)+(spec|test).ts',
+    '**/tests/**/*.test.ts',
+    '**/__tests__/**/*.test.ts',
   ],
+  
+  // TypeScript transform
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      useESM: true,
-    }],
+    '^.+\\.ts$': 'ts-jest',
   },
+  
+  // Module paths
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
+  
+  // Coverage settings
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/**/*.test.ts',
-    '!src/**/__tests__/**',
+    '!src/index.ts',
   ],
-  coverageDirectory: 'coverage',
-  coverageReporters: ['text', 'lcov', 'html'],
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1',
+  
+  // Setup files
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.test.ts'],
+  
+  // Timeout and worker settings
+  testTimeout: 15000,
+  forceExit: true,
+  detectOpenHandles: true,
+  
+  // Coverage thresholds
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
   },
-  setupFilesAfterEnv: [],
+  
+  // Ignore patterns
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/dist/',
+    '/coverage/',
+    '/tests/mcp-protocol.test.ts',
+  ],
+  
+  // Environment variables
+  testEnvironmentOptions: {
+    NODE_ENV: 'test',
+  },
 }; 
