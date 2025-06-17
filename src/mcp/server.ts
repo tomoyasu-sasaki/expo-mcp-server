@@ -31,6 +31,7 @@ export class ExpoMcpServer extends EventEmitter {
   private isConnected = false;
   private sessionId: string;
   private config: any;
+  private signalHandlersRegistered = false;
 
   constructor(config: any) {
     super();
@@ -312,8 +313,7 @@ export class ExpoMcpServer extends EventEmitter {
       this.emit('server:connected', { sessionId: this.sessionId, transport: 'stdio' });
       
       // プロセス終了時のクリーンアップ
-      process.on('SIGINT', () => this.gracefulShutdown('SIGINT'));
-      process.on('SIGTERM', () => this.gracefulShutdown('SIGTERM'));
+      this.registerSignalHandlers();
       
     } catch (error) {
       console.error(`[Session: ${this.sessionId}] Failed to start MCP Server:`, error);
@@ -349,8 +349,7 @@ export class ExpoMcpServer extends EventEmitter {
       this.emit('server:connected', { sessionId: this.sessionId, transport: 'http+sse', port });
       
       // プロセス終了時のクリーンアップ
-      process.on('SIGINT', () => this.gracefulShutdown('SIGINT'));
-      process.on('SIGTERM', () => this.gracefulShutdown('SIGTERM'));
+      this.registerSignalHandlers();
       
     } catch (error) {
       console.error(`[Session: ${this.sessionId}] Failed to start MCP Server HTTP transport:`, error);
@@ -478,6 +477,9 @@ export class ExpoMcpServer extends EventEmitter {
     try {
       this.isConnected = false;
       
+      // シグナルハンドラーを削除
+      this.unregisterSignalHandlers();
+      
       // HTTP transport停止
       if (this.httpTransport) {
         await this.httpTransport.stop();
@@ -521,6 +523,49 @@ export class ExpoMcpServer extends EventEmitter {
       console.error(`[Session: ${this.sessionId}] Reconnection failed:`, error);
       this.emit('error', error);
       throw error;
+    }
+  }
+
+  /**
+   * シグナルハンドラー: SIGINT処理
+   */
+  private handleSigint = () => {
+    this.gracefulShutdown('SIGINT');
+  };
+
+  /**
+   * シグナルハンドラー: SIGTERM処理
+   */
+  private handleSigterm = () => {
+    this.gracefulShutdown('SIGTERM');
+  };
+
+  /**
+   * プロセスシグナルハンドラーを登録
+   */
+  private registerSignalHandlers(): void {
+    if (this.signalHandlersRegistered) {
+      // 既存ハンドラーを削除
+      this.unregisterSignalHandlers();
+    }
+
+    process.on('SIGINT', this.handleSigint);
+    process.on('SIGTERM', this.handleSigterm);
+    this.signalHandlersRegistered = true;
+    
+    console.log(`[Session: ${this.sessionId}] Process signal handlers registered`);
+  }
+
+  /**
+   * プロセスシグナルハンドラーを削除
+   */
+  private unregisterSignalHandlers(): void {
+    if (this.signalHandlersRegistered) {
+      process.removeListener('SIGINT', this.handleSigint);
+      process.removeListener('SIGTERM', this.handleSigterm);
+      this.signalHandlersRegistered = false;
+      
+      console.log(`[Session: ${this.sessionId}] Process signal handlers unregistered`);
     }
   }
 } 

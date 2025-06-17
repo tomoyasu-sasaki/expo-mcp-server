@@ -122,7 +122,7 @@ export class ExpoResources {
     }
 
     const preset = params.get('preset') || 'default';
-    const platform = params.get('platform');
+    const platform = params.get('platform') || undefined;
     
     // 模擬実装 - 実際には設定テンプレート生成エンジン
     await new Promise(resolve => setTimeout(resolve, 150)); // Template generation simulation
