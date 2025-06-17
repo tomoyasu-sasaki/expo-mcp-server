@@ -1,0 +1,172 @@
+{
+  "server": {
+    "description": "Expo MCP Server - Production Environment"
+  },
+  "mcp": {
+    "stdio": {
+      "timeout_ms": 3000
+    },
+    "http": {
+      "cors_origins": [
+        "https://cursor.sh",
+        "https://claude.ai",
+        "https://expo.dev"
+      ],
+      "timeout_ms": 15000
+    }
+  },
+  "storage": {
+    "local": {
+      "path": "/app/data",
+      "max_size_gb": 20,
+      "backup": {
+        "enabled": true,
+        "rotation_days": 30,
+        "max_files": 50
+      }
+    }
+  },
+  "cache": {
+    "memory": {
+      "max_size_mb": 512,
+      "ttl_seconds": 600
+    },
+    "redis": {
+      "url": "${REDIS_URL}",
+      "max_size_mb": 2048,
+      "ttl_seconds": 7200,
+      "key_prefix": "expo-mcp-prod:",
+      "cluster_support": true
+    },
+    "disk": {
+      "path": "/app/cache",
+      "max_size_gb": 50,
+      "ttl_days": 30,
+      "compression": true
+    }
+  },
+  "external_services": {
+    "expo": {
+      "timeout_ms": 8000,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 60,
+        "burst": 10
+      }
+    },
+    "typesense": {
+      "url": "${TYPESENSE_URL}",
+      "api_key": "${TYPESENSE_API_KEY}",
+      "timeout_ms": 3000,
+      "collection_name": "expo_docs_prod"
+    },
+    "github": {
+      "timeout_ms": 5000,
+      "rate_limit": {
+        "requests_per_hour": 500
+      }
+    }
+  },
+  "security": {
+    "input_validation": {
+      "max_tool_args_size_bytes": 1024,
+      "max_resource_uri_length": 256,
+      "prevent_code_injection": true
+    },
+    "access_control": {
+      "rate_limit_per_session": 1000,
+      "session_timeout_minutes": 30,
+      "require_authentication": true
+    },
+    "tool_execution": {
+      "sandboxing_enabled": true,
+      "resource_limits": {
+        "max_memory_mb": 128,
+        "max_cpu_time_ms": 3000,
+        "max_file_reads": 50,
+        "max_network_requests": 20
+      }
+    }
+  },
+  "performance": {
+    "targets": {
+      "p95_stdio_latency_ms": 30,
+      "p95_search_latency_ms": 80,
+      "p95_sdk_lookup_ms": 60,
+      "p95_config_generation_ms": 150,
+      "p95_tool_execution_ms": 300,
+      "cache_hit_target_percent": 90,
+      "concurrent_sessions": 500,
+      "memory_usage_max_mb": 512,
+      "cpu_usage_max_percent": 70
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9090,
+      "health_check_interval_ms": 30000
+    }
+  },
+  "logging": {
+    "level": "warn",
+    "outputs": ["console", "file"],
+    "file": {
+      "enabled": true,
+      "path": "/app/logs/expo-mcp-prod.log",
+      "max_size_mb": 200,
+      "max_files": 20,
+      "max_age_days": 90,
+      "compress": true
+    },
+    "log_requests": false,
+    "log_responses": false,
+    "sensitive_data_masking": true,
+    "include_mcp_events": true
+  },
+  "features": {
+    "tools": {
+      "expo_read_document": { "enabled": true, "timeout_ms": 3000 },
+      "expo_search_documents": { "enabled": true, "timeout_ms": 2000 },
+      "expo_recommend": { "enabled": true, "timeout_ms": 1500 },
+      "expo_get_sdk_module": { "enabled": true, "timeout_ms": 1500 },
+      "expo_config_templates": { "enabled": true, "timeout_ms": 2000 },
+      "expo_eas_command_builder": { "enabled": true, "timeout_ms": 800 },
+      "expo_code_examples": { "enabled": true, "timeout_ms": 3000 },
+      "expo_error_diagnosis": { "enabled": true, "timeout_ms": 2000 }
+    },
+    "search": {
+      "typo_tolerance": true,
+      "synonyms_enabled": true,
+      "faceted_search": true,
+      "code_boost_factor": 3.0,
+      "api_boost_factor": 3.5
+    },
+    "recommendations": {
+      "similarity_threshold": 0.8,
+      "max_results": 8,
+      "context_window": 800
+    }
+  },
+  "production": {
+    "health_checks": {
+      "enabled": true,
+      "interval_ms": 30000,
+      "endpoints": ["/health", "/metrics"]
+    },
+    "graceful_shutdown": {
+      "enabled": true,
+      "timeout_ms": 30000
+    },
+    "auto_scaling": {
+      "enabled": true,
+      "min_instances": 2,
+      "max_instances": 10,
+      "target_cpu_percent": 70
+    },
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_threshold": 5,
+      "timeout_ms": 60000,
+      "half_open_max_calls": 3
+    }
+  }
+} 

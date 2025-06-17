@@ -1,0 +1,25 @@
+📋 Security Configuration Check:
+=================================
+User Setting:             "User": "mcpuser",
+
+Dockerfile Security Analysis:
+----------------------------
+54:COPY --from=builder --chown=mcpuser:nodejs /app/node_modules ./node_modules/
+55:COPY --from=builder --chown=mcpuser:nodejs /app/dist ./dist/
+56:COPY --from=builder --chown=mcpuser:nodejs /app/package*.json ./
+59:COPY --chown=mcpuser:nodejs docker/health-check.cjs ./
+60:COPY --chown=mcpuser:nodejs docker/entrypoint.sh ./
+64:USER mcpuser
+77:HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
+
+Docker Compose Security Settings:
+--------------------------------
+37:    security_opt:
+38:      - no-new-privileges:true
+39:    read_only: true
+40:    cap_drop:
+106:    security_opt:
+107:      - no-new-privileges:true
+108:    read_only: true
+150:    security_opt:
+151:      - no-new-privileges:true

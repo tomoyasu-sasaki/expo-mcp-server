@@ -1,0 +1,177 @@
+{
+  "server": {
+    "name": "expo-mcp-server",
+    "version": "1.0.0",
+    "description": "Expo MCP Server - Production Ready"
+  },
+  "mcp": {
+    "protocol_version": "2024-11-05",
+    "default_transport": "stdio",
+    "stdio": {
+      "encoding": "utf-8",
+      "timeout_ms": 5000,
+      "max_message_size_bytes": 1048576,
+      "line_delimited": true
+    },
+    "http": {
+      "port": 3000,
+      "host": "0.0.0.0",
+      "cors_enabled": true,
+      "cors_origins": ["*"],
+      "timeout_ms": 30000,
+      "websocket_upgrade": true,
+      "max_connections": 200
+    }
+  },
+  "storage": {
+    "local": {
+      "path": "./data",
+      "max_size_gb": 10,
+      "compression": true,
+      "backup": {
+        "enabled": true,
+        "rotation_days": 7,
+        "max_files": 10
+      }
+    }
+  },
+  "cache": {
+    "memory": {
+      "max_size_mb": 200,
+      "ttl_seconds": 300,
+      "eviction_policy": "LRU"
+    },
+    "redis": {
+      "url": "redis://localhost:6379",
+      "max_size_mb": 1000,
+      "ttl_seconds": 3600,
+      "key_prefix": "expo-mcp:"
+    },
+    "disk": {
+      "path": "./cache",
+      "max_size_gb": 20,
+      "ttl_days": 7,
+      "compression": true
+    }
+  },
+  "external_services": {
+    "expo": {
+      "api_base": "https://api.expo.dev",
+      "docs_base": "https://docs.expo.dev",
+      "snack_base": "https://snack.expo.dev",
+      "timeout_ms": 10000,
+      "retry_attempts": 3,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "burst": 20
+      }
+    },
+    "typesense": {
+      "url": "http://localhost:8108",
+      "api_key": "xyz",
+      "timeout_ms": 5000,
+      "collection_name": "expo_docs"
+    },
+    "github": {
+      "base_url": "https://api.github.com",
+      "timeout_ms": 10000,
+      "rate_limit": {
+        "requests_per_hour": 1000
+      }
+    }
+  },
+  "security": {
+    "input_validation": {
+      "max_tool_args_size_bytes": 2048,
+      "max_resource_uri_length": 512,
+      "sanitize_file_paths": true,
+      "validate_json_schema": true,
+      "prevent_code_injection": true,
+      "allowed_file_extensions": [".md", ".json", ".txt", ".js", ".ts"]
+    },
+    "access_control": {
+      "allowed_hosts": [
+        "docs.expo.dev",
+        "api.expo.dev",
+        "snack.expo.dev",
+        "github.com",
+        "raw.githubusercontent.com",
+        "npm.expo.dev"
+      ],
+      "rate_limit_per_session": 2000,
+      "session_timeout_minutes": 60,
+      "require_authentication": false
+    },
+    "tool_execution": {
+      "sandboxing_enabled": true,
+      "blocked_system_calls": ["exec", "spawn", "eval", "require"],
+      "resource_limits": {
+        "max_memory_mb": 256,
+        "max_cpu_time_ms": 5000,
+        "max_file_reads": 100,
+        "max_network_requests": 50
+      }
+    }
+  },
+  "performance": {
+    "targets": {
+      "p95_stdio_latency_ms": 50,
+      "p95_search_latency_ms": 100,
+      "p95_sdk_lookup_ms": 80,
+      "p95_config_generation_ms": 200,
+      "p95_tool_execution_ms": 500,
+      "cache_hit_target_percent": 85,
+      "concurrent_sessions": 200,
+      "memory_usage_max_mb": 1024,
+      "cpu_usage_max_percent": 80
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9090,
+      "health_check_interval_ms": 30000
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "timestamp": true,
+    "outputs": ["console"],
+    "file": {
+      "enabled": false,
+      "path": "./logs/expo-mcp-server.log",
+      "max_size_mb": 100,
+      "max_files": 10,
+      "max_age_days": 30,
+      "compress": true
+    },
+    "include_mcp_events": true,
+    "sensitive_data_masking": true,
+    "log_requests": false,
+    "log_responses": false
+  },
+  "features": {
+    "tools": {
+      "expo_read_document": { "enabled": true, "timeout_ms": 5000 },
+      "expo_search_documents": { "enabled": true, "timeout_ms": 3000 },
+      "expo_recommend": { "enabled": true, "timeout_ms": 2000 },
+      "expo_get_sdk_module": { "enabled": true, "timeout_ms": 2000 },
+      "expo_config_templates": { "enabled": true, "timeout_ms": 3000 },
+      "expo_eas_command_builder": { "enabled": true, "timeout_ms": 1000 },
+      "expo_code_examples": { "enabled": true, "timeout_ms": 4000 },
+      "expo_error_diagnosis": { "enabled": true, "timeout_ms": 3000 }
+    },
+    "search": {
+      "typo_tolerance": true,
+      "synonyms_enabled": true,
+      "faceted_search": true,
+      "code_boost_factor": 2.5,
+      "api_boost_factor": 3.0
+    },
+    "recommendations": {
+      "embeddings_model": "all-MiniLM-L6-v2",
+      "similarity_threshold": 0.75,
+      "max_results": 10,
+      "context_window": 1000
+    }
+  }
+} 

@@ -1,0 +1,1095 @@
+project:
+  name: expo-mcp-server
+  description: >
+    Model Context Protocol (MCP) サーバーの実装。Expo ドキュメント、API リファレンス、
+    コミュニティリソースからコンテンツを取得・インデックス化・検索し、Cursor や他の
+    開発者ツールでMCPプロトコル経由で利用可能にします。
+  stakeholders:
+    product_owner: Expo DevRel Team
+    tech_lead: Engineering Lead
+    users:
+      - react_native_developers
+      - expo_users
+      - mobile_app_developers
+      - cross_platform_teams
+      - cursor_users
+      - mcp_clients
+  goals:
+    - MCP標準準拠によるCursor等のツール連携
+    - オフライン/キャッシュ可能なExpoドキュメント、APIリファレンス、ガイドアクセス
+    - SDK モジュールと例をまたいだ高速・タイポ耐性検索
+    - モバイル開発パターンのコンテキスト認識推薦
+    - Expo CLI コマンドと EAS ワークフローとのシームレス統合
+  out_of_scope:
+    - 直接的なアプリビルドやデプロイメント
+    - Expo SDK ソースコードの変更
+    - EAS アカウント認証情報の管理
+    - 非Expo関連の React Native コンテンツ
+
+# =============================================================================
+# MCP Protocol Implementation (Model Context Protocol)
+# =============================================================================
+mcp_implementation:
+  protocol_version: "2024-11-05"
+  specification_url: "https://spec.modelcontextprotocol.io/specification/"
+  
+  transports:
+    stdio:
+      enabled: true
+      description: "標準入出力を使用したJSON-RPC通信（主要モード）"
+      timeout_ms: 5000
+      max_message_size_bytes: 1048576  # 1MB
+      encoding: "utf-8"
+      line_delimited: true
+      
+    http_sse:
+      enabled: true
+      description: "HTTP + Server-Sent Events による通信"
+      endpoint: "/mcp"
+      port: 3000
+      cors_enabled: true
+      timeout_ms: 30000
+      websocket_upgrade: true
+      
+  rpc_format: "json-rpc-2.0"
+  
+  capabilities:
+    tools:
+      - name: "expo_read_document"
+        description: "Expoドキュメント、APIリファレンス、ガイドを取得"
+        input_schema:
+          type: "object"
+          properties:
+            url:
+              type: "string"
+              format: "uri"
+            doc_type:
+              type: "string"
+              enum: ["guide", "api", "tutorial", "reference"]
+          required: ["url"]
+          
+      - name: "expo_search_documents"
+        description: "Expoエコシステム全体でコンテンツ検索"
+        input_schema:
+          type: "object"
+          properties:
+            query:
+              type: "string"
+              maxLength: 500
+            filters:
+              type: "object"
+              properties:
+                category:
+                  type: "array"
+                  items:
+                    enum: ["docs", "api", "examples", "tutorials"]
+                platform:
+                  type: "array"
+                  items:
+                    enum: ["ios", "android", "web", "universal"]
+                sdk_version:
+                  type: "array"
+                  items:
+                    enum: ["latest", "sdk-49", "sdk-48"]
+                module_type:
+                  type: "array"
+                  items:
+                    enum: ["core", "community", "deprecated"]
+          required: ["query"]
+          
+      - name: "expo_recommend"
+        description: "現在のコンテキストに基づく関連コンテンツ推薦"
+        input_schema:
+          type: "object"
+          properties:
+            context:
+              type: "string"
+              maxLength: 1000
+            max_results:
+              type: "integer"
+              minimum: 1
+              maximum: 10
+              default: 5
+            platform:
+              type: "string"
+              enum: ["ios", "android", "web", "universal"]
+          required: ["context"]
+          
+      - name: "expo_get_sdk_module"
+        description: "Expo SDK モジュールの詳細情報を取得"
+        input_schema:
+          type: "object"
+          properties:
+            module_name:
+              type: "string"
+              pattern: "^[a-zA-Z0-9_-]+$"
+            sdk_version:
+              type: "string"
+              pattern: "^(latest|sdk-\\d+)$"
+              default: "latest"
+          required: ["module_name"]
+          
+      - name: "expo_config_templates"
+        description: "Expo設定ファイルの生成と検証"
+        input_schema:
+          type: "object"
+          properties:
+            template_type:
+              type: "string"
+              enum: ["app.json", "eas.json", "metro.config.js"]
+            project_context:
+              type: "object"
+              properties:
+                name:
+                  type: "string"
+                platforms:
+                  type: "array"
+                  items:
+                    enum: ["ios", "android", "web"]
+                sdk_version:
+                  type: "string"
+          required: ["template_type"]
+          
+      - name: "expo_eas_command_builder"
+        description: "EAS CLI コマンドをコンテキストに基づいて生成"
+        input_schema:
+          type: "object"
+          properties:
+            operation:
+              type: "string"
+              enum: ["build", "submit", "update", "credentials"]
+            platform:
+              type: "string"
+              enum: ["ios", "android", "all"]
+            profile:
+              type: "string"
+              default: "development"
+          required: ["operation"]
+          
+      - name: "expo_code_examples"
+        description: "実行可能なコード例とSnack統合を提供"
+        input_schema:
+          type: "object"
+          properties:
+            pattern:
+              type: "string"
+              maxLength: 100
+            language:
+              type: "string"
+              enum: ["typescript", "javascript"]
+              default: "typescript"
+            platform:
+              type: "string"
+              enum: ["ios", "android", "web", "universal"]
+          required: ["pattern"]
+          
+      - name: "expo_error_diagnosis"
+        description: "一般的なExpoエラーの分析と解決策提供"
+        input_schema:
+          type: "object"
+          properties:
+            error_message:
+              type: "string"
+              maxLength: 2000
+            error_type:
+              type: "string"
+              enum: ["build", "runtime", "metro", "eas", "expo_cli"]
+            platform:
+              type: "string"
+              enum: ["ios", "android", "web"]
+          required: ["error_message"]
+          
+    resources:
+      - uri_template: "expo://docs/{path}"
+        name: "Expo Documentation"
+        description: "Expo公式ドキュメント"
+        mime_type: "text/markdown"
+        
+      - uri_template: "expo://api/{module}"
+        name: "Expo SDK API Reference"
+        description: "Expo SDK APIリファレンス"
+        mime_type: "text/markdown"
+        
+      - uri_template: "expo://examples/{category}"
+        name: "Code Examples"
+        description: "実行可能なコード例とSnackリンク"
+        mime_type: "application/json"
+        
+      - uri_template: "expo://config/{type}"
+        name: "Configuration Templates"
+        description: "Expo設定ファイルテンプレート"
+        mime_type: "application/json"
+        
+      - uri_template: "expo://eas/{command}"
+        name: "EAS Commands"
+        description: "EAS CLI コマンドリファレンス"
+        mime_type: "text/plain"
+        
+    prompts:
+      - name: "expo_setup_helper"
+        description: "Expoプロジェクトセットアップ支援プロンプト"
+        arguments:
+          - name: "project_type"
+            description: "プロジェクトタイプ（blank, tabs, bare workflow）"
+            required: true
+          - name: "target_platforms"
+            description: "対象プラットフォーム"
+            required: false
+            
+      - name: "expo_error_helper"
+        description: "Expoエラー解決支援プロンプト"
+        arguments:
+          - name: "error_message"
+            description: "エラーメッセージ"
+            required: true
+          - name: "context"
+            description: "発生時のコンテキスト（ビルド中、実行中等）"
+            required: false
+            
+      - name: "expo_api_helper"
+        description: "Expo API使用支援プロンプト"
+        arguments:
+          - name: "module_name"
+            description: "使用したいExpo SDKモジュール"
+            required: true
+          - name: "use_case"
+            description: "使用目的・実現したい機能"
+            required: false
+            
+      - name: "expo_config_analyzer"
+        description: "Expo設定分析・最適化提案プロンプト"
+        arguments:
+          - name: "config_content"
+            description: "現在のapp.jsonまたはeas.json内容"
+            required: true
+          - name: "target_environment"
+            description: "対象環境（development, preview, production）"
+            required: false
+
+# ========== IMPLEMENTATION STACK ==========
+implementation:
+  runtime:
+    platform: "Node.js 18+"
+    typescript: true
+    typescript_version: "5.0+"
+    target: "ES2022"
+  framework:
+    primary: "Fastify 4.x"
+    alternatives: ["Express.js 4.x"]
+    reasons: "Better performance, TypeScript support, schema validation"
+  package_management:
+    manager: "npm"
+    lockfile: "package-lock.json"
+    node_version_file: ".nvmrc"
+  build_system:
+    bundler: "esbuild"
+    transpiler: "tsc"
+    target_format: ["cjs", "esm"]
+  mcp_compliance:
+    protocol: "JSON-RPC 2.0"
+    transport: "stdio"
+    specification_version: "2024-11-05"
+    sdk: "@modelcontextprotocol/sdk"
+    sdk_version: "^0.5.0"
+
+# ========== COMMUNICATION PROTOCOLS ==========
+communication:
+  primary:
+    protocol: "JSON-RPC 2.0 over stdio"
+    specification: "MCP Protocol 2024-11-05"
+    encoding: "UTF-8"
+    message_format: "line-delimited JSON"
+  fallback:
+    protocol: "HTTP + Server-Sent Events"
+    port: 3000
+    cors_enabled: true
+    websocket_upgrade: true
+  protocols_supported:
+    - name: "stdio_jsonrpc"
+      priority: 1
+      description: "Standard MCP protocol over stdio"
+    - name: "http_sse"
+      priority: 2
+      description: "HTTP with Server-Sent Events for real-time updates"
+    - name: "websocket"
+      priority: 3
+      description: "WebSocket for bidirectional communication"
+  message_handling:
+    max_message_size: "10MB"
+    timeout_ms: 30000
+    batch_support: true
+    streaming_support: true
+
+# =============================================================================
+# Enhanced Security for MCP
+# =============================================================================
+mcp_security:
+  input_validation:
+    max_tool_args_size_bytes: 2048
+    max_resource_uri_length: 512
+    sanitize_file_paths: true
+    validate_json_schema: true
+    prevent_code_injection: true
+    expo_specific_validation:
+      validate_sdk_versions: true
+      sanitize_snack_urls: true
+      validate_eas_commands: true
+    
+  stdio_security:
+    max_concurrent_requests: 50
+    request_timeout_ms: 30000
+    validate_json_rpc: true
+    sanitize_stdio_input: true
+    message_size_limit_mb: 10
+    
+  tool_execution:
+    sandboxing_enabled: true
+    allowed_file_extensions: [".md", ".json", ".txt", ".js", ".ts"]
+    blocked_system_calls: ["exec", "spawn", "eval"]
+    expo_cli_isolation: true
+    snack_sandboxing: true
+    resource_limits:
+      max_memory_mb: 256
+      max_cpu_time_ms: 5000
+      max_file_reads: 100
+      max_network_requests: 50
+      
+  access_control:
+    allowed_hosts:
+      - "docs.expo.dev"
+      - "api.expo.dev"
+      - "snack.expo.dev"
+      - "github.com/expo"
+      - "npm.expo.dev"
+    rate_limit_per_session: 2000  # requests per hour（開発中は頻繁）
+    session_timeout_minutes: 60
+    require_authentication: false  # 開発環境では無効
+    
+  data_protection:
+    encrypt_cache: true
+    log_sanitization: true
+    audit_trail: true
+    gdpr_compliance: true
+    mask_sensitive_data:
+      - api_keys
+      - build_credentials
+      - personal_identifiers
+    
+  vulnerability_mitigation:
+    prompt_injection_detection: true
+    xss_prevention: true
+    path_traversal_protection: true
+    denial_of_service_protection: true
+    malicious_snack_detection: true
+    sdk_version_spoofing_prevention: true
+
+# ========== CONTAINERIZATION ==========
+containerization:
+  docker:
+    enabled: true
+    base_image: "node:18-alpine"
+    multi_stage_build: true
+    final_image_size_target: "<200MB"
+    health_check:
+      command: ["CMD", "node", "health-check.js"]
+      interval: "30s"
+      timeout: "10s"
+      retries: 3
+      start_period: "40s"
+    security:
+      non_root_user: true
+      readonly_rootfs: true
+      no_new_privileges: true
+      container_scanning: true
+      image_signing: true
+  docker_compose:
+    version: "3.8"
+    services:
+      - name: "expo-mcp-api"
+        build: "."
+        restart: "unless-stopped"
+        volumes: ["./data:/app/data"]
+      - name: "redis-cache"
+        image: "redis:7-alpine"
+        volumes: ["redis_data:/data"]
+      - name: "typesense-search"
+        image: "typesense/typesense:0.25.1"
+        volumes: ["typesense_data:/data"]
+    networks:
+      - name: "expo-mcp-network"
+        driver: "bridge"
+    volumes:
+      - "redis_data"
+      - "typesense_data"
+      - "app_cache"
+      - "local_data"
+  kubernetes:
+    deployment_ready: true
+    manifests_included: true
+    ingress_configured: true
+    namespace: "expo-mcp"
+    resource_limits:
+      cpu: "500m"
+      memory: "1Gi"
+    resource_requests:
+      cpu: "100m"
+      memory: "256Mi"
+
+# ========== CONFIGURATION MANAGEMENT ==========
+configuration:
+  environment_variables:
+    required:
+      - NODE_ENV: "development|production|test"
+      - MCP_MODE: "stdio|http"
+      - MCP_PORT: "stdio|3000-65535"
+      - LOG_LEVEL: "debug|info|warn|error"
+    optional:
+      - CACHE_TTL_SECONDS: "default: 3600"
+      - RATE_LIMIT_RPM: "default: 2000"
+      - JWT_SECRET: "auto-generated if not provided"
+      - REDIS_URL: "default: redis://localhost:6379"
+      - TYPESENSE_URL: "default: http://localhost:8108"
+      - EXPO_API_BASE: "default: https://api.expo.dev"
+      - SNACK_API_BASE: "default: https://snack.expo.dev"
+      - LOCAL_STORAGE_PATH: "default: ./data"
+      - MAX_STORAGE_SIZE_GB: "default: 10"
+  config_files:
+    - path: "mcp-config.json"
+      description: "メインMCP設定ファイル"
+      schema_validation: true
+    - path: "config/default.json"
+      description: "Base configuration"
+    - path: "config/development.json"
+      description: "Development overrides"
+    - path: "config/production.json"
+      description: "Production settings"
+    - path: "config/test.json"
+      description: "Test environment"
+    - path: "docker-compose.yml"
+      description: "Docker環境設定"
+    - path: ".env.example"
+      description: "環境変数テンプレート"
+  cli_options:
+    - flag: "--stdio"
+      description: "Force stdio mode (default for MCP)"
+      type: "boolean"
+      default: true
+    - flag: "--port"
+      description: "Override HTTP port (stdio mode ignores this)"
+      type: "number"
+    - flag: "--cache-size"
+      description: "Memory cache size in MB"
+      type: "number"
+      default: 200
+    - flag: "--debug"
+      description: "Enable debug logging"
+      type: "boolean"
+    - flag: "--config"
+      description: "Custom config file path"
+      type: "string"
+  validation:
+    schema_validation: true
+    environment_check: true
+    dependency_verification: true
+
+# ========== STATE MANAGEMENT ==========
+state_management:
+  session:
+    type: "stateless + JWT"
+    token_ttl: "24h"
+    refresh_enabled: true
+    concurrent_sessions: 10
+    storage: "Redis"
+    mcp_session_tracking: true
+  cache:
+    layers:
+      - type: "memory"
+        max_size_mb: 200
+        eviction: "LRU"
+        ttl_seconds: 300
+      - type: "redis"
+        max_size_mb: 1000
+        ttl_seconds: 3600
+        cluster_support: true
+      - type: "disk"
+        max_size_gb: 20
+        ttl_days: 7
+        compression: true
+  connection_state:
+    heartbeat_interval: "30s"
+    reconnection_attempts: 5
+    backoff_strategy: "exponential"
+    max_backoff: "30s"
+    mcp_stdio_monitoring: true
+  context_preservation:
+    conversation_memory: true
+    max_context_turns: 50
+    context_compression: true
+    persistence: "redis"
+    expo_specific_context:
+      sdk_version_tracking: true
+      eas_project_state: true
+      development_vs_production: true
+      platform_preferences: true
+
+# ========== DEVELOPMENT ENVIRONMENT ==========
+development:
+  setup:
+    prerequisites:
+      - "Node.js 18+"
+      - "npm 8+"
+      - "Docker 20+"
+      - "Docker Compose 2+"
+    quick_start:
+      - "git clone <repository>"
+      - "cd expo-mcp-server"
+      - "npm install"
+      - "cp .env.example .env"
+      - "docker-compose up -d"
+      - "npm run dev"
+    mcp_specific_setup:
+      - "npm run mcp:stdio  # MCP stdio mode"
+      - "npm run mcp:http   # MCP HTTP mode"
+  scripts:
+    start: "node dist/index.js"
+    mcp_stdio: "node dist/index.js --stdio"
+    mcp_http: "node dist/index.js --port 3000"
+    dev: "tsx watch src/index.ts"
+    build: "tsc && esbuild src/index.ts --bundle --platform=node --outfile=dist/index.js"
+    test: "jest"
+    test_watch: "jest --watch"
+    test_mcp: "jest --testPathPattern=mcp"
+    lint: "eslint src/**/*.ts"
+    lint_fix: "eslint src/**/*.ts --fix"
+    type_check: "tsc --noEmit"
+    docker_build: "docker build -t expo-mcp-server ."
+    docker_run: "docker run -p 3000:3000 expo-mcp-server"
+    docker_mcp: "docker run -i expo-mcp-server --stdio"
+  debugging:
+    vscode_config: true
+    breakpoint_support: true
+    source_maps: true
+    debug_port: 9229
+    mcp_debug_tools: true
+  hot_reload:
+    enabled: true
+    watch_patterns: ["src/**/*.ts", "config/**/*.json"]
+    ignore_patterns: ["node_modules", "dist", ".git"]
+
+features:
+  read_document:
+    description: Fetch docs, API refs, or guides and return Markdown + meta
+    inputs:
+      - url
+      - doc_type: ["guide", "api", "tutorial", "reference"]
+    outputs:
+      markdown: string
+      frontmatter:
+        title: string
+        last_modified: datetime
+        toc: list
+        canonical_url: string
+        expo_sdk_version: string
+        platforms: ["ios", "android", "web"]
+    constraints:
+      obey_robots_txt: true
+      obey_llms_txt: true
+      diff_cache: true
+      rate_limit_rps: 3
+
+  search_document:
+    description: Search across Expo ecosystem content
+    index_engine: Typesense
+    capabilities:
+      typo_tolerance: true
+      synonyms: true
+      code_block_boost: 2.5
+      api_method_boost: 3.0
+      faceted_search:
+        - category: ["docs", "api", "examples", "tutorials"]
+        - platform: ["ios", "android", "web", "universal"]
+        - sdk_version: ["latest", "sdk-49", "sdk-48"]
+        - module_type: ["core", "community", "deprecated"]
+
+  recommend:
+    description: Return related content based on current context
+    algorithm:
+      embeddings_model: all-MiniLM-L6-v2
+      similarity: cosine
+      context_awareness:
+        - current_sdk_modules
+        - error_patterns
+        - platform_target
+    outputs:
+      recommended:
+        - title: string
+          url: string
+          reason: string
+          relevance_score: float
+          content_type: string
+
+  get_sdk_module:
+    description: Detailed info about Expo SDK modules
+    inputs:
+      - module_name: string
+      - sdk_version: string (optional)
+    outputs:
+      module:
+        name: string
+        description: string
+        installation: string
+        platforms: list
+        permissions: list
+        methods:
+          - name: string
+            signature: string
+            description: string
+            example: string
+        constants: object
+        types: object
+
+  config_templates:
+    description: Generate and validate Expo config files
+    capabilities:
+      app_json_generation: true
+      eas_json_generation: true
+      metro_config_support: true
+      plugin_config_validation: true
+    outputs:
+      config:
+        type: ["app.json", "eas.json", "metro.config.js"]
+        content: string
+        validation_errors: list
+        suggestions: list
+
+  eas_command_builder:
+    description: Generate EAS CLI commands based on context
+    capabilities:
+      build_commands: true
+      submit_commands: true
+      update_commands: true
+      credentials_management: true
+    outputs:
+      command: string
+      description: string
+      prerequisites: list
+      flags: object
+
+  code_examples:
+    description: Extract and provide runnable code examples
+    capabilities:
+      snack_compatible: true
+      dependency_resolution: true
+      platform_specific_variants: true
+    outputs:
+      examples:
+        - code: string
+          language: string
+          snack_url: string
+          dependencies: object
+          platforms: list
+          description: string
+
+  error_diagnosis:
+    description: Analyze and provide solutions for common Expo errors
+    capabilities:
+      error_pattern_matching: true
+      solution_ranking: true
+      version_compatibility_check: true
+    outputs:
+      diagnosis:
+        error_type: string
+        likely_causes: list
+        solutions:
+          - description: string
+            confidence: float
+            steps: list
+
+  context_management:
+    max_context_size: 8192
+    summarization: true
+    priority_ranking:
+      - current_project_config
+      - imported_sdk_modules
+      - recent_errors
+      - platform_targets
+    expo_specific_context:
+      - sdk_version_tracking
+      - eas_project_state
+      - development_vs_production
+
+  cursor_integration:
+    tool_definitions:
+      - name: "expo_docs"
+        description: "Search and read Expo documentation"
+        priority: high
+      - name: "expo_sdk"
+        description: "Get SDK module information and examples"
+        priority: high
+      - name: "expo_config"
+        description: "Generate and validate Expo configuration"
+        priority: medium
+      - name: "expo_eas"
+        description: "Build EAS commands and workflows"
+        priority: medium
+      - name: "expo_debug"
+        description: "Diagnose Expo/React Native errors"
+        priority: high
+    response_formatting:
+      code_blocks: true
+      inline_links: true
+      syntax_highlighting: true
+      platform_badges: true
+      snack_embeds: true
+    quick_actions:
+      - "Find Camera API example"
+      - "Generate app.json config"
+      - "Build for TestFlight"
+      - "Debug Metro bundler error"
+    mcp_integration:
+      stdio_optimization: true
+      response_streaming: true
+      low_latency_mode: true
+      cursor_protocol_version: "0.42"
+      expo_workflow_integration: true
+
+  diff_crawl:
+    schedule: "daily"  # Expoは頻繁に更新される
+    strategy: "etag + last-mod + sdk-version"
+    sources:
+      - url: "https://docs.expo.dev"
+        priority: high
+      - url: "https://github.com/expo/expo"
+        paths: ["packages/*/README.md"]
+        priority: medium
+    storage:
+      primary: "local_filesystem"
+      base_path: "./data/crawl"
+      backup_enabled: true
+      compression: true
+      cache_layers:
+        - type: "sqlite"
+          location: "local"
+          ttl_days: 14
+        - type: "memory"
+          max_size_mb: 200
+          eviction: "lru"
+
+  link_normalization:
+    convert_relative_to_absolute: true
+    handle_version_redirects: true
+    track_deprecated_urls: true
+
+  api:
+    auth:
+      type: "JWT"
+      key_rotation: "monthly"
+    rate_limit:
+      per_user: 2000   # 開発中は頻繁にアクセス
+      burst: 50
+    endpoints:
+      - GET /api/read?url=
+      - GET /api/search?q=
+      - GET /api/recommend?context=
+      - GET /api/sdk/:module
+      - GET /api/config/generate
+      - GET /api/eas/command
+      - GET /api/examples?module=
+      - GET /api/diagnose/error
+      - GET /api/stats
+      - POST /mcp  # MCP over HTTP endpoint
+
+  metrics:
+    store: Prometheus
+    collected:
+      - request_latency_ms
+      - search_qps
+      - cache_hit_rate
+      - sdk_module_usage
+      - error_diagnosis_accuracy
+      - config_generation_success_rate
+      - platform_distribution
+      - mcp_session_duration_minutes
+      - stdio_message_throughput
+      - tool_execution_success_rate
+      - security_violation_count
+      - snack_generation_success_rate
+
+  ci_cd:
+    github_actions:
+      - lint
+      - test
+      - build
+      - docker_build
+      - deploy
+      - sdk_compatibility_check
+      - example_validation
+      - security_scan
+      - mcp_compliance_test
+    tests:
+      - schema_validation
+      - broken_link_check
+      - code_example_execution
+      - config_template_validation
+      - sdk_version_compatibility
+      - mcp_protocol_compliance
+      - stdio_communication_test
+      - docker_container_health
+
+  security:
+    cors:
+      allowed_origins:
+        - "https://*.expo.dev"
+        - "cursor://app"
+        - "vscode://app"  # VS Code origin
+        - "http://localhost:*"  # 開発環境
+    vulnerability_scans: weekly
+    api_key_rotation: monthly
+    request_signing: true
+    audit_logging:
+      enabled: true
+      retention_days: 90
+      include_mcp_events: true
+    sensitive_data_handling:
+      exclude_credentials: true
+      mask_api_keys: true
+    input_validation:
+      schema_validation: true
+      sanitization: true
+      size_limits: true
+      content_type_validation: true
+    access_control:
+      rate_limiting: true
+      ip_whitelisting: optional
+      token_validation: true
+      permission_system: rbac
+    container_security:
+      non_root_user: true
+      readonly_filesystem: true
+      security_scanning: true
+      image_signing: true
+
+non_functional_requirements:
+  performance:
+    p95_read_latency_ms: 150      # より高速に
+    p95_search_latency_ms: 100
+    p95_sdk_lookup_ms: 80
+    p95_config_generation_ms: 200
+    p95_mcp_stdio_latency_ms: 50   # 新規：MCP stdio応答時間
+    p95_tool_execution_latency_ms: 500  # 新規：ツール実行時間
+    cache_hit_target: 85%
+    concurrent_connections: 200
+    concurrent_mcp_sessions: 200   # 新規：同時MCPセッション数
+    memory_usage_max: "1GB"
+    memory_usage_per_session_mb: 50
+    cpu_usage_max: "80%"
+  availability: "99.9%"
+  scalability: 
+    horizontal_scaling: true
+    max_concurrent_users: 200
+    load_balancer_ready: true
+    stateless_design: true
+  reliability:
+    error_recovery: automatic
+    graceful_degradation: true
+    circuit_breaker: true
+    retry_mechanism: exponential_backoff
+  localization: 
+    supported_languages: ["en", "ja", "zh", "ko", "es"]
+    default: "en"
+    fallback_strategy: "en"
+  storage:
+    max_cache_size_gb: 20          # SDK例が多い
+    max_memory_usage_mb: 1000
+    max_session_storage_mb: 100
+    backup_strategy: "daily"
+    retention_policy: "30_days"
+    local_filesystem:
+      base_directory: "./data"
+      max_size_gb: 10
+      compression: true
+      backup_rotation: 7
+      cleanup_interval_hours: 24
+  compatibility:
+    mcp_client_support:
+      - "Cursor IDE >= 0.42"
+      - "Claude Desktop >= 0.5"
+      - "Generic MCP clients"
+    node_js_versions: ["18.x", "20.x", "22.x"]
+    docker_platforms: ["linux/amd64", "linux/arm64"]
+    operating_systems: ["macOS", "Linux", "Windows"]
+    expo_sdk_versions: ["latest", "sdk-49", "sdk-48"]
+
+acceptance_criteria:
+  # 既存のクライテリア
+  - ドキュメント読み取りは元のMarkdownと99%一致（フォーマット含む）
+  - "Camera"検索が100ms以内に完了し、Camera APIモジュールを含む
+  - SDK-49のモジュール情報が80ms以内に取得可能
+  - app.json生成が有効な設定を95%以上の確率で出力
+  - エラー診断が一般的なエラーの80%以上に対して有効な解決策を提供
+  - Snack互換のコード例が90%以上実行可能
+  - EASコマンドが正しいフラグと前提条件を含む
+  
+  # 新規：MCP特有のクライテリア
+  - MCP server起動が`npm run mcp:stdio`で成功し、10秒以内に応答準備完了
+  - Docker container起動が`docker run -i expo-mcp-server --stdio`で成功
+  - JSON-RPC over stdio通信がレスポンス時間 <50ms を維持
+  - HTTP+SSE endpoint接続が5秒以内に確立
+  - ツール実行サンドボックスが未承認ファイルシステムアクセスを防止
+  - セッション状態がMCPクライアント再接続をまたいで保持
+  - セキュリティ検証が悪意のある入力を99.9%の精度でブロック
+  - 全MCPツールが宣言されたJSONスキーマに100%準拠
+  - リソースURIが適切なMIMEタイプで正しく解決
+  - プロンプトテンプレートが全テストケースで有効な応答を生成
+  - Snack URLが有効なリンクを95%以上の確率で生成
+  - Docker health checkが10秒以内に応答
+  - Node.js 18+での動作保証100%
+  - 設定ファイルによる環境切り替えが正常動作100%
+
+monitoring:
+  dashboards:
+    - usage_by_platform
+    - sdk_version_distribution
+    - popular_modules
+    - error_patterns
+    - eas_command_usage
+    - mcp_protocol_compliance
+    - container_health
+    - node_performance
+    - mcp_session_analytics
+    - security_events
+    - snack_integration_metrics
+    
+  alerts:
+    - latency_threshold_breach
+    - cache_miss_rate_high
+    - sdk_compatibility_issue
+    - broken_example_detected
+    - storage_capacity_warning
+    - container_restart_frequency
+    - memory_leak_detection
+    - protocol_violation
+    - mcp_session_failure_rate
+    - security_violation_detected
+    - docker_container_unhealthy
+    - stdio_communication_timeout
+
+deployment:
+  environments:
+    - dev
+    - staging
+    - production
+    - canary  # 新SDK版のテスト用
+    
+  deployment_methods:
+    npm_package:
+      registry: "npmjs.com"
+      scope: "@expo-mcp"
+      binary_linking: true
+      mcp_integration: true
+      
+    docker_image:
+      registry: "ghcr.io"
+      repository: "expo/mcp-server"
+      tag_strategy: "semantic_versioning"
+      multi_arch: true
+      health_check_included: true
+      
+    standalone_binary:
+      platforms: ["linux-x64", "darwin-x64", "darwin-arm64", "win32-x64"]
+      pkg_tool: true
+      mcp_stdio_support: true
+      
+  rollout_strategy: "canary_deployment"
+  rollback_capability: true
+  automation:
+    ci_cd_pipeline: true
+    automated_testing: true
+    security_scanning: true
+    dependency_updates: true
+  health_checks:
+    - api_responsive
+    - search_functional
+    - sdk_data_current
+    - example_runner_healthy
+    - mcp_protocol_active
+    - container_healthy
+    - dependencies_loaded
+    - mcp_stdio_communication
+    - docker_container_running
+    - security_subsystem_active
+
+integrations:
+  external_services:
+    - expo_snack_api
+    - eas_metadata_service
+    - npm_registry
+    - github_releases
+    - typesense_cloud
+    - redis_cloud
+  webhooks:
+    - sdk_release_notifications
+    - documentation_updates
+    - deprecation_warnings
+    - security_alerts
+  mcp_ecosystem:
+    - cursor_integration
+    - vscode_extension
+    - cli_tools
+    - other_mcp_servers
+
+# ========== QUALITY ASSURANCE ==========
+quality_assurance:
+  code_quality:
+    eslint_config: "@typescript-eslint/recommended"
+    prettier_config: true
+    husky_pre_commit: true
+    sonarqube_integration: true
+  testing:
+    unit_tests:
+      framework: "Jest"
+      coverage_target: "90%"
+      snapshot_testing: true
+      mcp_tool_testing: true
+    integration_tests:
+      framework: "Supertest"
+      database_mocking: true
+      external_api_mocking: true
+      mcp_protocol_testing: true
+    e2e_tests:
+      framework: "Playwright"
+      mcp_protocol_testing: true
+      docker_testing: true
+      stdio_communication_testing: true
+  documentation:
+    api_documentation: "OpenAPI 3.0"
+    mcp_tool_documentation: "JSON Schema + examples"
+    code_documentation: "JSDoc"
+    readme_completeness: true
+    setup_guides: true
+    troubleshooting_guides: true
+    mcp_integration_guides: true
+
+documentation:
+  user_guides:
+    - "Installation & Setup Guide"
+    - "MCP Client Integration"
+    - "Cursor IDE Configuration"
+    - "Docker Deployment Guide"
+    - "Expo Workflow Integration"
+    - "Troubleshooting Guide"
+    
+  developer_docs:
+    - "API Reference"
+    - "MCP Tool Documentation"
+    - "Security Best Practices"
+    - "Performance Tuning"
+    - "Expo SDK Integration"
+    - "Contributing Guidelines"
+    
+  generated_docs:
+    - JSON Schema definitions
+    - OpenAPI specifications
+    - MCP capability manifests
+    - Docker image documentation
+    - SDK module mappings

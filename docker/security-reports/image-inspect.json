@@ -1,0 +1,323 @@
+[
+    {
+        "Id": "d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b",
+        "Created": "2025-06-17T07:10:58.406883263Z",
+        "Path": "dumb-init",
+        "Args": [
+            "--",
+            "./entrypoint.sh"
+        ],
+        "State": {
+            "Status": "exited",
+            "Running": false,
+            "Paused": false,
+            "Restarting": false,
+            "OOMKilled": false,
+            "Dead": false,
+            "Pid": 0,
+            "ExitCode": 1,
+            "Error": "",
+            "StartedAt": "2025-06-17T07:11:50.992144843Z",
+            "FinishedAt": "2025-06-17T07:11:51.10471701Z",
+            "Health": {
+                "Status": "unhealthy",
+                "FailingStreak": 0,
+                "Log": []
+            }
+        },
+        "Image": "sha256:82cecce8f65bad9c5d99cac60058399b4442cf253c6efcb9ccfd6dc86b2b761f",
+        "ResolvConfPath": "/var/lib/docker/containers/d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b/resolv.conf",
+        "HostnamePath": "/var/lib/docker/containers/d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b/hostname",
+        "HostsPath": "/var/lib/docker/containers/d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b/hosts",
+        "LogPath": "/var/lib/docker/containers/d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b/d4712839c6322870853a0fc7185bd8492812f4ce484a7b8781d6807aa358ef0b-json.log",
+        "Name": "/expo-mcp-server",
+        "RestartCount": 10,
+        "Driver": "overlayfs",
+        "Platform": "linux",
+        "MountLabel": "",
+        "ProcessLabel": "",
+        "AppArmorProfile": "",
+        "ExecIDs": null,
+        "HostConfig": {
+            "Binds": [
+                "/Users/tmys-sasaki/Projects/Public/MCP/expo-mcp-server/data:/app/data:rw"
+            ],
+            "ContainerIDFile": "",
+            "LogConfig": {
+                "Type": "json-file",
+                "Config": {}
+            },
+            "NetworkMode": "expo-mcp-network",
+            "PortBindings": {
+                "3000/tcp": [
+                    {
+                        "HostIp": "",
+                        "HostPort": "3000"
+                    }
+                ]
+            },
+            "RestartPolicy": {
+                "Name": "unless-stopped",
+                "MaximumRetryCount": 0
+            },
+            "AutoRemove": false,
+            "VolumeDriver": "",
+            "VolumesFrom": null,
+            "ConsoleSize": [
+                0,
+                0
+            ],
+            "CapAdd": [
+                "CHOWN",
+                "SETGID",
+                "SETUID"
+            ],
+            "CapDrop": [
+                "ALL"
+            ],
+            "CgroupnsMode": "private",
+            "Dns": null,
+            "DnsOptions": null,
+            "DnsSearch": null,
+            "ExtraHosts": [],
+            "GroupAdd": null,
+            "IpcMode": "private",
+            "Cgroup": "",
+            "Links": null,
+            "OomScoreAdj": 0,
+            "PidMode": "",
+            "Privileged": false,
+            "PublishAllPorts": false,
+            "ReadonlyRootfs": true,
+            "SecurityOpt": [
+                "no-new-privileges:true"
+            ],
+            "UTSMode": "",
+            "UsernsMode": "",
+            "ShmSize": 67108864,
+            "Runtime": "runc",
+            "Isolation": "",
+            "CpuShares": 0,
+            "Memory": 1073741824,
+            "NanoCpus": 500000000,
+            "CgroupParent": "",
+            "BlkioWeight": 0,
+            "BlkioWeightDevice": null,
+            "BlkioDeviceReadBps": null,
+            "BlkioDeviceWriteBps": null,
+            "BlkioDeviceReadIOps": null,
+            "BlkioDeviceWriteIOps": null,
+            "CpuPeriod": 0,
+            "CpuQuota": 0,
+            "CpuRealtimePeriod": 0,
+            "CpuRealtimeRuntime": 0,
+            "CpusetCpus": "",
+            "CpusetMems": "",
+            "Devices": null,
+            "DeviceCgroupRules": null,
+            "DeviceRequests": null,
+            "MemoryReservation": 268435456,
+            "MemorySwap": 2147483648,
+            "MemorySwappiness": null,
+            "OomKillDisable": null,
+            "PidsLimit": null,
+            "Ulimits": null,
+            "CpuCount": 0,
+            "CpuPercent": 0,
+            "IOMaximumIOps": 0,
+            "IOMaximumBandwidth": 0,
+            "Mounts": [
+                {
+                    "Type": "volume",
+                    "Source": "expo-mcp-app-cache",
+                    "Target": "/app/cache",
+                    "VolumeOptions": {}
+                },
+                {
+                    "Type": "volume",
+                    "Source": "expo-mcp-local-data",
+                    "Target": "/app/logs",
+                    "VolumeOptions": {}
+                },
+                {
+                    "Type": "volume",
+                    "Target": "/tmp",
+                    "VolumeOptions": {}
+                }
+            ],
+            "MaskedPaths": [
+                "/proc/asound",
+                "/proc/acpi",
+                "/proc/kcore",
+                "/proc/keys",
+                "/proc/latency_stats",
+                "/proc/timer_list",
+                "/proc/timer_stats",
+                "/proc/sched_debug",
+                "/proc/scsi",
+                "/sys/firmware",
+                "/sys/devices/virtual/powercap"
+            ],
+            "ReadonlyPaths": [
+                "/proc/bus",
+                "/proc/fs",
+                "/proc/irq",
+                "/proc/sys",
+                "/proc/sysrq-trigger"
+            ]
+        },
+        "GraphDriver": {
+            "Data": null,
+            "Name": "overlayfs"
+        },
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/Users/tmys-sasaki/Projects/Public/MCP/expo-mcp-server/data",
+                "Destination": "/app/data",
+                "Mode": "rw",
+                "RW": true,
+                "Propagation": "rprivate"
+            },
+            {
+                "Type": "volume",
+                "Name": "expo-mcp-app-cache",
+                "Source": "/var/lib/docker/volumes/expo-mcp-app-cache/_data",
+                "Destination": "/app/cache",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": true,
+                "Propagation": ""
+            },
+            {
+                "Type": "volume",
+                "Name": "expo-mcp-local-data",
+                "Source": "/var/lib/docker/volumes/expo-mcp-local-data/_data",
+                "Destination": "/app/logs",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": true,
+                "Propagation": ""
+            },
+            {
+                "Type": "volume",
+                "Name": "579bf57c3cd151874ed151f209a4292f5b3f7afd933d95676c7869e51b3ebba5",
+                "Source": "/var/lib/docker/volumes/579bf57c3cd151874ed151f209a4292f5b3f7afd933d95676c7869e51b3ebba5/_data",
+                "Destination": "/tmp",
+                "Driver": "local",
+                "Mode": "z",
+                "RW": true,
+                "Propagation": ""
+            }
+        ],
+        "Config": {
+            "Hostname": "d4712839c632",
+            "Domainname": "",
+            "User": "mcpuser",
+            "AttachStdin": false,
+            "AttachStdout": true,
+            "AttachStderr": true,
+            "ExposedPorts": {
+                "3000/tcp": {}
+            },
+            "Tty": false,
+            "OpenStdin": false,
+            "StdinOnce": false,
+            "Env": [
+                "LOG_LEVEL=info",
+                "LOCAL_STORAGE_PATH=/app/data",
+                "MAX_STORAGE_SIZE_GB=10",
+                "REDIS_URL=redis://redis-cache:6379",
+                "TYPESENSE_URL=http://typesense-search:8108",
+                "TYPESENSE_API_KEY=xyz",
+                "NODE_ENV=production",
+                "MCP_MODE=stdio",
+                "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+                "NODE_VERSION=18.20.8",
+                "YARN_VERSION=1.22.22"
+            ],
+            "Cmd": [
+                "./entrypoint.sh"
+            ],
+            "Healthcheck": {
+                "Test": [
+                    "CMD",
+                    "node",
+                    "health-check.cjs"
+                ],
+                "Interval": 30000000000,
+                "Timeout": 10000000000,
+                "StartPeriod": 40000000000,
+                "Retries": 3
+            },
+            "Image": "expo-mcp-server-expo-mcp-api",
+            "Volumes": {
+                "/app/cache": {},
+                "/app/data": {},
+                "/app/logs": {}
+            },
+            "WorkingDir": "/app",
+            "Entrypoint": [
+                "dumb-init",
+                "--"
+            ],
+            "OnBuild": null,
+            "Labels": {
+                "com.docker.compose.config-hash": "fe12fcefa3f3576071691255a1b03c2fdf5950f413894a463971d6445c9f5680",
+                "com.docker.compose.container-number": "1",
+                "com.docker.compose.depends_on": "redis-cache:service_started:false,typesense-search:service_started:false",
+                "com.docker.compose.image": "sha256:82cecce8f65bad9c5d99cac60058399b4442cf253c6efcb9ccfd6dc86b2b761f",
+                "com.docker.compose.oneoff": "False",
+                "com.docker.compose.project": "expo-mcp-server",
+                "com.docker.compose.project.config_files": "/Users/tmys-sasaki/Projects/Public/MCP/expo-mcp-server/docker-compose.yml",
+                "com.docker.compose.project.working_dir": "/Users/tmys-sasaki/Projects/Public/MCP/expo-mcp-server",
+                "com.docker.compose.service": "expo-mcp-api",
+                "com.docker.compose.version": "2.30.3"
+            }
+        },
+        "NetworkSettings": {
+            "Bridge": "",
+            "SandboxID": "",
+            "SandboxKey": "",
+            "Ports": {},
+            "HairpinMode": false,
+            "LinkLocalIPv6Address": "",
+            "LinkLocalIPv6PrefixLen": 0,
+            "SecondaryIPAddresses": null,
+            "SecondaryIPv6Addresses": null,
+            "EndpointID": "",
+            "Gateway": "",
+            "GlobalIPv6Address": "",
+            "GlobalIPv6PrefixLen": 0,
+            "IPAddress": "",
+            "IPPrefixLen": 0,
+            "IPv6Gateway": "",
+            "MacAddress": "",
+            "Networks": {
+                "expo-mcp-network": {
+                    "IPAMConfig": null,
+                    "Links": null,
+                    "Aliases": [
+                        "expo-mcp-server",
+                        "expo-mcp-api"
+                    ],
+                    "MacAddress": "",
+                    "DriverOpts": null,
+                    "NetworkID": "8e02e45053da00d7fb8d65d42a0de67f490da9885fda740980a567e13e4c024a",
+                    "EndpointID": "",
+                    "Gateway": "",
+                    "IPAddress": "",
+                    "IPPrefixLen": 0,
+                    "IPv6Gateway": "",
+                    "GlobalIPv6Address": "",
+                    "GlobalIPv6PrefixLen": 0,
+                    "DNSNames": [
+                        "expo-mcp-server",
+                        "expo-mcp-api",
+                        "d4712839c632"
+                    ]
+                }
+            }
+        }
+    }
+]

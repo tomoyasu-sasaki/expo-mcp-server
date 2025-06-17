@@ -1,0 +1,184 @@
+{
+  "$schema": "https://spec.modelcontextprotocol.io/specification/server/config.schema.json",
+  "name": "expo-mcp-server",
+  "version": "1.0.0",
+  "description": "Model Context Protocol server for Expo ecosystem",
+  "protocol": {
+    "version": "2024-11-05",
+    "transports": {
+      "stdio": {
+        "enabled": true,
+        "encoding": "utf-8",
+        "timeout_ms": 5000,
+        "max_message_size_bytes": 1048576
+      },
+      "http": {
+        "enabled": true,
+        "port": 3000,
+        "cors_enabled": true,
+        "timeout_ms": 30000,
+        "websocket_upgrade": true
+      }
+    }
+  },
+  "capabilities": {
+    "tools": [
+      {
+        "name": "expo_read_document",
+        "description": "Expoドキュメント、APIリファレンス、ガイドを取得",
+        "enabled": true
+      },
+      {
+        "name": "expo_search_documents",
+        "description": "Expoエコシステム全体でコンテンツ検索",
+        "enabled": true
+      },
+      {
+        "name": "expo_recommend",
+        "description": "現在のコンテキストに基づく関連コンテンツ推薦",
+        "enabled": true
+      },
+      {
+        "name": "expo_get_sdk_module",
+        "description": "Expo SDK モジュールの詳細情報を取得",
+        "enabled": true
+      },
+      {
+        "name": "expo_config_templates",
+        "description": "Expo設定ファイルの生成と検証",
+        "enabled": true
+      },
+      {
+        "name": "expo_eas_command_builder",
+        "description": "EAS CLI コマンドをコンテキストに基づいて生成",
+        "enabled": true
+      },
+      {
+        "name": "expo_code_examples",
+        "description": "実行可能なコード例とSnack統合を提供",
+        "enabled": true
+      },
+      {
+        "name": "expo_error_diagnosis",
+        "description": "一般的なExpoエラーの分析と解決策提供",
+        "enabled": true
+      }
+    ],
+    "resources": [
+      {
+        "uri_template": "expo://docs/{path}",
+        "name": "Expo Documentation",
+        "mime_type": "text/markdown"
+      },
+      {
+        "uri_template": "expo://api/{module}",
+        "name": "Expo SDK API Reference",
+        "mime_type": "text/markdown"
+      },
+      {
+        "uri_template": "expo://examples/{category}",
+        "name": "Code Examples",
+        "mime_type": "application/json"
+      },
+      {
+        "uri_template": "expo://config/{type}",
+        "name": "Configuration Templates",
+        "mime_type": "application/json"
+      },
+      {
+        "uri_template": "expo://eas/{command}",
+        "name": "EAS Commands",
+        "mime_type": "text/plain"
+      }
+    ],
+    "prompts": [
+      {
+        "name": "expo_setup_helper",
+        "description": "Expoプロジェクトセットアップ支援プロンプト"
+      },
+      {
+        "name": "expo_error_helper",
+        "description": "Expoエラー解決支援プロンプト"
+      },
+      {
+        "name": "expo_api_helper",
+        "description": "Expo API使用支援プロンプト"
+      },
+      {
+        "name": "expo_config_analyzer",
+        "description": "Expo設定分析・最適化提案プロンプト"
+      }
+    ]
+  },
+  "security": {
+    "input_validation": {
+      "max_tool_args_size_bytes": 2048,
+      "max_resource_uri_length": 512,
+      "sanitize_file_paths": true,
+      "validate_json_schema": true,
+      "prevent_code_injection": true
+    },
+    "access_control": {
+      "allowed_hosts": [
+        "docs.expo.dev",
+        "api.expo.dev",
+        "snack.expo.dev",
+        "github.com/expo",
+        "npm.expo.dev"
+      ],
+      "rate_limit_per_session": 2000,
+      "session_timeout_minutes": 60,
+      "require_authentication": false
+    },
+    "tool_execution": {
+      "sandboxing_enabled": true,
+      "allowed_file_extensions": [".md", ".json", ".txt", ".js", ".ts"],
+      "blocked_system_calls": ["exec", "spawn", "eval"],
+      "resource_limits": {
+        "max_memory_mb": 256,
+        "max_cpu_time_ms": 5000,
+        "max_file_reads": 100,
+        "max_network_requests": 50
+      }
+    }
+  },
+  "performance": {
+    "cache": {
+      "memory": {
+        "max_size_mb": 200,
+        "ttl_seconds": 300,
+        "eviction": "LRU"
+      },
+      "redis": {
+        "max_size_mb": 1000,
+        "ttl_seconds": 3600,
+        "cluster_support": true
+      },
+      "disk": {
+        "max_size_gb": 20,
+        "ttl_days": 7,
+        "compression": true
+      }
+    },
+    "targets": {
+      "p95_stdio_latency_ms": 50,
+      "p95_search_latency_ms": 100,
+      "p95_sdk_lookup_ms": 80,
+      "cache_hit_target": 85,
+      "concurrent_sessions": 200
+    }
+  },
+  "logging": {
+    "level": "info",
+    "format": "json",
+    "output": ["console", "file"],
+    "file_path": "./logs/expo-mcp-server.log",
+    "rotation": {
+      "max_size_mb": 100,
+      "max_files": 10,
+      "max_age_days": 30
+    },
+    "include_mcp_events": true,
+    "sensitive_data_masking": true
+  }
+} 

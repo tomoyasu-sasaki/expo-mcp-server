@@ -1,0 +1,130 @@
+{
+  "server": {
+    "description": "Expo MCP Server - Development Environment"
+  },
+  "mcp": {
+    "stdio": {
+      "timeout_ms": 10000
+    },
+    "http": {
+      "cors_origins": ["*"],
+      "timeout_ms": 60000
+    }
+  },
+  "storage": {
+    "local": {
+      "path": "./data-dev",
+      "max_size_gb": 5
+    }
+  },
+  "cache": {
+    "memory": {
+      "max_size_mb": 100,
+      "ttl_seconds": 60
+    },
+    "redis": {
+      "url": "redis://localhost:6379",
+      "ttl_seconds": 600,
+      "key_prefix": "expo-mcp-dev:"
+    },
+    "disk": {
+      "path": "./cache-dev",
+      "max_size_gb": 5,
+      "ttl_days": 1
+    }
+  },
+  "external_services": {
+    "expo": {
+      "timeout_ms": 30000,
+      "retry_attempts": 1,
+      "rate_limit": {
+        "requests_per_minute": 200,
+        "burst": 50
+      }
+    },
+    "typesense": {
+      "url": "http://localhost:8108",
+      "api_key": "dev-key",
+      "timeout_ms": 10000,
+      "collection_name": "expo_docs_dev"
+    }
+  },
+  "security": {
+    "input_validation": {
+      "prevent_code_injection": false
+    },
+    "access_control": {
+      "rate_limit_per_session": 5000,
+      "session_timeout_minutes": 120
+    },
+    "tool_execution": {
+      "sandboxing_enabled": false,
+      "resource_limits": {
+        "max_memory_mb": 512,
+        "max_cpu_time_ms": 10000,
+        "max_file_reads": 500,
+        "max_network_requests": 200
+      }
+    }
+  },
+  "performance": {
+    "targets": {
+      "p95_stdio_latency_ms": 100,
+      "p95_search_latency_ms": 200,
+      "p95_sdk_lookup_ms": 150,
+      "cache_hit_target_percent": 70,
+      "concurrent_sessions": 50
+    },
+    "monitoring": {
+      "enabled": true,
+      "metrics_port": 9091,
+      "health_check_interval_ms": 10000
+    }
+  },
+  "logging": {
+    "level": "debug",
+    "outputs": ["console", "file"],
+    "file": {
+      "enabled": true,
+      "path": "./logs/expo-mcp-dev.log",
+      "max_size_mb": 50,
+      "max_files": 5,
+      "max_age_days": 7
+    },
+    "log_requests": true,
+    "log_responses": true,
+    "sensitive_data_masking": false
+  },
+  "features": {
+    "tools": {
+      "expo_read_document": { "timeout_ms": 10000 },
+      "expo_search_documents": { "timeout_ms": 8000 },
+      "expo_recommend": { "timeout_ms": 5000 },
+      "expo_get_sdk_module": { "timeout_ms": 5000 },
+      "expo_config_templates": { "timeout_ms": 8000 },
+      "expo_eas_command_builder": { "timeout_ms": 3000 },
+      "expo_code_examples": { "timeout_ms": 10000 },
+      "expo_error_diagnosis": { "timeout_ms": 8000 }
+    },
+    "search": {
+      "typo_tolerance": true,
+      "synonyms_enabled": true,
+      "faceted_search": true,
+      "code_boost_factor": 2.0,
+      "api_boost_factor": 2.5
+    },
+    "recommendations": {
+      "similarity_threshold": 0.6,
+      "max_results": 15,
+      "context_window": 2000
+    }
+  },
+  "development": {
+    "hot_reload": true,
+    "watch_config": true,
+    "debug_mode": true,
+    "verbose_errors": true,
+    "mock_external_apis": false,
+    "enable_experimental_features": true
+  }
+} 
