@@ -132,7 +132,7 @@ export class MarkdownParser {
       const title = match[3];
 
       // 相対URLを絶対URLに変換
-      if (baseUrl && url.startsWith('./') || url.startsWith('../')) {
+      if (baseUrl && (url.startsWith('./') || url.startsWith('../'))) {
         try {
           url = new URL(url, baseUrl).href;
         } catch (error) {
