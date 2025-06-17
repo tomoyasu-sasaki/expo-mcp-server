@@ -195,6 +195,7 @@ export type Config = z.infer<typeof ConfigSchema>;
 
 export interface CLIOptions {
   stdio?: boolean;
+  http?: boolean;
   port?: number;
   'cache-size'?: number;
   debug?: boolean;
@@ -316,14 +317,14 @@ For full documentation, visit: https://github.com/expo/mcp-server
     }
 
     if (options.port) {
-      this.config.mcp.http.port = options.port;
+      this.config.mcp.http.port = typeof options.port === 'string' ? parseInt(options.port, 10) : options.port;
       if (!options.stdio) {
         this.config.mcp.default_transport = 'http';
       }
     }
 
     if (options['cache-size']) {
-      this.config.cache.memory.max_size_mb = options['cache-size'];
+      this.config.cache.memory.max_size_mb = typeof options['cache-size'] === 'string' ? parseInt(options['cache-size'], 10) : options['cache-size'];
     }
 
     if (options.debug) {

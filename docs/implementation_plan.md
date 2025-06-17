@@ -113,87 +113,87 @@ Phase → Section → Task の3層構造で、誰でも同じ手順で実装で�
 **✅ 完了条件**: JSON-RPC 2.0 over stdio通信が正常動作し、基本的なMCPメッセージ交換ができる
 
 ### MCP SDK統合
-- ☐ MCP SDK 初期化
-- ☐ サーバーインスタンス作成
-- ☐ JSON-RPC 2.0 プロトコル設定
-- ☐ stdio トランスポート実装
-- ☐ メッセージハンドリング基盤実装
+- ☑ MCP SDK 初期化
+- ☑ サーバーインスタンス作成
+- ☑ JSON-RPC 2.0 プロトコル設定
+- ☑ stdio トランスポート実装
+- ☑ メッセージハンドリング基盤実装
 
 ### 基本通信機能
-- ☐ `initialize` メッセージハンドリング
-- ☐ `initialized` 通知実装
-- ☐ `capabilities` 応答実装
-- ☐ `ping`/`pong` 実装
-- ☐ エラーハンドリング実装
+- ☑ `initialize` メッセージハンドリング
+- ☑ `initialized` 通知実装
+- ☑ `capabilities` 応答実装
+- ☑ `ping`/`pong` 実装
+- ☑ エラーハンドリング実装
 
 ### セッション管理
-- ☐ セッション初期化
-- ☐ セッション状態管理
-- ☐ 再接続処理
-- ☐ グレースフルシャットダウン
+- ☑ セッション初期化
+- ☑ セッション状態管理
+- ☑ 再接続処理
+- ☑ グレースフルシャットダウン
 
 ### 動作確認・テスト（単体テスト）
-- ☐ MCP クライアントシミュレータでの通信確認
-- ☐ JSON-RPC メッセージ形式確認
-- ☐ エラーレスポンス確認
-- ☐ セッション管理テスト実行
-- ☐ 実装漏れチェック: MCP仕様準拠確認
+- ☑ MCP クライアントシミュレータでの通信確認
+- ☑ JSON-RPC メッセージ形式確認
+- ☑ エラーレスポンス確認
+- ☑ セッション管理テスト実行
+- ☑ 実装漏れチェック: MCP仕様準拠確認
 
 ## Section 2.2: HTTP + SSE フォールバック実装
 **✅ 完了条件**: HTTP + Server-Sent Events通信が正常動作し、WebSocket アップグレード機能が動作する
 
 ### HTTP サーバー実装
-- ☐ Fastify サーバー設定
-- ☐ CORS 設定実装
-- ☐ `/mcp` エンドポイント実装
-- ☐ Server-Sent Events 実装
-- ☐ WebSocket アップグレード実装
+- ☑ Fastify サーバー設定
+- ☑ CORS 設定実装
+- ☑ `/mcp` エンドポイント実装
+- ☑ Server-Sent Events 実装
+- ☑ WebSocket アップグレード実装
 
 ### セキュリティ設定
-- ☐ レート制限実装
-- ☐ 入力バリデーション
+- ☑ レート制限実装
+- ☑ 入力バリデーション
 - ☐ HTTPS 対応設定
-- ☐ セキュリティヘッダー設定
+- ☑ セキュリティヘッダー設定
 
 ### 動作確認・テスト（統合テスト）
-- ☐ HTTP エンドポイント動作確認
-- ☐ SSE 通信確認
-- ☐ WebSocket アップグレード確認
-- ☐ CORS 動作確認
-- ☐ 実装漏れチェック: フォールバック機能完全性確認
+- ☑ HTTP エンドポイント動作確認
+- ☑ SSE 通信確認
+- ☑ WebSocket アップグレード確認
+- ☑ CORS 動作確認
+- ☑ 実装漏れチェック: フォールバック機能完全性確認
 
 ## Section 2.3: MCP ツール・リソース・プロンプト実装
 **✅ 完了条件**: 全てのMCPツール、リソース、プロンプトが仕様通りに動作する
 
 ### ツール実装
-- ☐ `expo_read_document` ツール実装
-- ☐ `expo_search_documents` ツール実装
-- ☐ `expo_recommend` ツール実装
-- ☐ `expo_get_sdk_module` ツール実装
-- ☐ `expo_config_templates` ツール実装
-- ☐ `expo_eas_command_builder` ツール実装
-- ☐ `expo_code_examples` ツール実装
-- ☐ `expo_error_diagnosis` ツール実装
+- ☑ `expo_read_document` ツール実装
+- ☑ `expo_search_documents` ツール実装
+- ☑ `expo_recommend` ツール実装
+- ☑ `expo_get_sdk_module` ツール実装
+- ☑ `expo_config_templates` ツール実装
+- ☑ `expo_eas_command_builder` ツール実装
+- ☑ `expo_code_examples` ツール実装
+- ☑ `expo_error_diagnosis` ツール実装
 
 ### リソース実装
-- ☐ `expo://docs/{path}` リソース実装
-- ☐ `expo://api/{module}` リソース実装
-- ☐ `expo://examples/{category}` リソース実装
-- ☐ `expo://config/{type}` リソース実装
-- ☐ `expo://eas/{command}` リソース実装
+- ☑ `expo://docs/{path}` リソース実装
+- ☑ `expo://api/{module}` リソース実装
+- ☑ `expo://examples/{category}` リソース実装
+- ☑ `expo://config/{type}` リソース実装
+- ☑ `expo://eas/{command}` リソース実装
 
 ### プロンプト実装
-- ☐ `expo_setup_helper` プロンプト実装
-- ☐ `expo_error_helper` プロンプト実装
-- ☐ `expo_api_helper` プロンプト実装
-- ☐ `expo_config_analyzer` プロンプト実装
+- ☑ `expo_setup_helper` プロンプト実装
+- ☑ `expo_error_helper` プロンプト実装
+- ☑ `expo_api_helper` プロンプト実装
+- ☑ `expo_config_analyzer` プロンプト実装
 
 ### 動作確認・テスト（機能テスト）
-- ☐ 全ツールの入出力スキーマ確認
-- ☐ リソース URI 解決確認
-- ☐ プロンプト生成確認
-- ☐ エラーハンドリング確認
-- ☐ 実装漏れチェック: MCP capability manifest確認
+- ☑ 全ツールの入出力スキーマ確認
+- ☑ リソース URI 解決確認
+- ☑ プロンプト生成確認
+- ☑ エラーハンドリング確認
+- ☑ 実装漏れチェック: MCP capability manifest確認
 
 ---
 
