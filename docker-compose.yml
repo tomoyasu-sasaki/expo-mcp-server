@@ -215,7 +215,7 @@ services:
     networks:
       - expo-mcp-network
     depends_on:
-      - expo-mcp-server
+      - expo-mcp-api
 
   # 新規: Grafana可視化ダッシュボード
   grafana:

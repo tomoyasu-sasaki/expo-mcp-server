@@ -212,40 +212,66 @@ export class ConcurrentProcessor extends EventEmitter {
     // Node.js Worker threadsはTypeScriptを直接実行できないため、
     // 常にコンパイル済みJavaScriptファイルのパスを返す
     
-    // ESモジュール環境での__filename/__dirname代替実装
-    let currentFileUrl: string;
     let currentFileName: string;
     let currentDirName: string;
     
     try {
       // ESモジュール環境でimport.meta.urlが利用可能な場合
-      if (import.meta && import.meta.url) {
-        currentFileUrl = import.meta.url;
-        currentFileName = fileURLToPath(currentFileUrl);
+      if (typeof import.meta !== 'undefined' && import.meta.url) {
+        currentFileName = fileURLToPath(import.meta.url);
         currentDirName = dirname(currentFileName);
       } else {
-        // CommonJS環境またはimport.meta.urlが利用できない場合
-        throw new Error('import.meta.url not available');
+        // CommonJS環境での__filename/__dirnameの検出を試行
+        throw new Error('ESM import.meta.url not available, trying CommonJS');
       }
     } catch {
-      // フォールバック: プロセスベースのパス解決
-      currentFileName = 'unknown';
-      currentDirName = process.cwd();
+                    // CommonJS環境での__filename/__dirnameを試行
+       try {
+         // CommonJS環境でのグローバル変数を動的に確認
+         const globalThis = global as any;
+         if (globalThis.__filename && globalThis.__dirname) {
+           currentFileName = globalThis.__filename;
+           currentDirName = globalThis.__dirname;
+         } else {
+           throw new Error('CommonJS __filename/__dirname not available');
+         }
+       } catch {
+         // 最後のフォールバック: より堅牢なパス推測
+         // 現在実行中のモジュールのパスを推測
+         const stackTrace = new Error().stack;
+         const callerMatch = stackTrace?.match(/at.*\((.+):(\d+):(\d+)\)/);
+         
+         if (callerMatch && callerMatch[1]) {
+           currentFileName = callerMatch[1];
+           currentDirName = dirname(currentFileName);
+         } else {
+           // 最終フォールバック: servicesディレクトリを推測
+           currentFileName = 'unknown';
+           currentDirName = path.join(process.cwd(), 'src', 'services');
+         }
+       }
     }
     
     // 実行時のファイル拡張子をチェック
     const currentFileExtension = path.extname(currentFileName);
     const isCompiledJS = currentFileExtension === '.js';
     
-    // 複数の可能なパスを試行
+    // 複数の可能なパスを試行（優先順位順）
     const possiblePaths = [
-      // 同じディレクトリ内（通常のケース）
+      // 同じディレクトリ内（最優先 - 通常のコンパイル済み環境）
       path.join(currentDirName, 'concurrent-processor-worker.js'),
-      // distディレクトリからの相対パス（開発環境でdistが利用可能な場合）
+      // 現在のディレクトリがsrcの場合、distディレクトリの対応する場所
+      currentDirName.includes('src/services') 
+        ? path.join(currentDirName.replace('src/services', 'dist/services'), 'concurrent-processor-worker.js')
+        : null,
+      // プロジェクトルートからのdistパス
       path.join(process.cwd(), 'dist', 'services', 'concurrent-processor-worker.js'),
-      // プロジェクトルートからの絶対パス
-      path.resolve(process.cwd(), 'dist/services/concurrent-processor-worker.js')
-    ];
+      // 開発環境でのsrcディレクトリからの相対パス（ビルドされたファイルを探す）
+      path.join(process.cwd(), 'src', 'services', 'concurrent-processor-worker.js'),
+      // NodeModulesやカスタムビルド出力の可能性
+      path.resolve(process.cwd(), 'lib/services/concurrent-processor-worker.js'),
+      path.resolve(process.cwd(), 'build/services/concurrent-processor-worker.js')
+    ].filter(Boolean) as string[]; // nullを除外
     
     // 存在するパスを検索
     for (const workerPath of possiblePaths) {
@@ -256,19 +282,21 @@ export class ConcurrentProcessor extends EventEmitter {
     }
     
     // すべてのパスで見つからない場合のエラー
-    const pathList = possiblePaths.map(p => `  - ${p}`).join('\n');
+    const pathList = possiblePaths.map(p => `  - ${p} (exists: ${fs.existsSync(p)})`).join('\n');
     const environmentInfo = isCompiledJS ? 'production/compiled' : 'development (ts-node)';
     
     throw new Error(
       `Worker file not found. Searched paths:\n${pathList}\n\n` +
-      `Current environment: ${environmentInfo}\n` +
+      `Environment: ${environmentInfo}\n` +
       `Current file: ${currentFileName}\n` +
       `Current directory: ${currentDirName}\n` +
       `Process cwd: ${process.cwd()}\n\n` +
-      'Please ensure:\n' +
+      'Troubleshooting steps:\n' +
       '1. Run "npm run build" to compile TypeScript files\n' +
-      '2. The dist/services/ directory contains concurrent-processor-worker.js\n' +
-      '3. Node.js Worker threads cannot execute TypeScript files directly'
+      '2. Ensure the worker file exists in one of the searched locations\n' +
+      '3. Check that the file is named "concurrent-processor-worker.js"\n' +
+      '4. Verify that Node.js can access the file (permissions)\n' +
+      '5. For development: ensure the compiled output directory structure matches src/'
     );
   }
 
