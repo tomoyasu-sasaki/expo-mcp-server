@@ -619,24 +619,70 @@ export class SandboxManager extends EventEmitter {
   private createRestrictedFetch(contextId: string) {
     const context = this.activeContexts.get(contextId);
 
-         return async (_url: string, _options?: any) => {
-       if (!context) throw new Error('Context not found');
-       
-       if (!this.config.restrictions.network_access) {
-         throw new Error('Network access is disabled');
-       }
+    return async (url: string, options?: any) => {
+      if (!context) throw new Error('Context not found');
+      
+      if (!this.config.restrictions.network_access) {
+        throw new Error('Network access is disabled');
+      }
 
-       // ネットワークリクエスト回数チェック
-       if (context.network_request_count >= this.config.resource_limits.max_network_requests) {
-         throw new Error('Network request limit exceeded');
-       }
+      // ネットワークリクエスト回数チェック
+      if (context.network_request_count >= this.config.resource_limits.max_network_requests) {
+        throw new Error('Network request limit exceeded');
+      }
 
-       context.network_request_count++;
-       this.networkRequestCount++;
+      // URL検証
+      const urlObj = new URL(url);
+      const allowedProtocols = ['http:', 'https:'];
+      if (!allowedProtocols.includes(urlObj.protocol)) {
+        throw new Error(`Protocol not allowed: ${urlObj.protocol}`);
+      }
 
-       // 実際のfetch実装は外部ライブラリまたはNode.js fetch使用
-       throw new Error('Fetch implementation not available in sandbox');
-     };
+      // ローカルネットワーク制限
+      const restrictedHosts = ['localhost', '127.0.0.1', '0.0.0.0', '::1'];
+      if (restrictedHosts.some(host => urlObj.hostname.includes(host))) {
+        throw new Error(`Access to local network is restricted: ${urlObj.hostname}`);
+      }
+
+      context.network_request_count++;
+      this.networkRequestCount++;
+
+      try {
+        // タイムアウト設定
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10秒タイムアウト
+
+        const fetchOptions = {
+          ...options,
+          signal: controller.signal,
+          headers: {
+            'User-Agent': 'Expo-MCP-Sandbox/1.0',
+            ...options?.headers,
+          },
+        };
+
+        // Node.js 18+ の fetch を使用
+        const response = await fetch(url, fetchOptions);
+        clearTimeout(timeoutId);
+
+        // レスポンスサイズ制限 (5MB)
+        const maxSize = 5 * 1024 * 1024;
+        const contentLength = response.headers.get('content-length');
+        if (contentLength && parseInt(contentLength) > maxSize) {
+          throw new Error(`Response too large: ${contentLength} bytes (max: ${maxSize})`);
+        }
+
+        return response;
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            throw new Error('Network request timeout');
+          }
+          throw error;
+        }
+        throw new Error('Network request failed');
+      }
+    };
   }
 
   /**
