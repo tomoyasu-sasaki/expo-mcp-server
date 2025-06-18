@@ -225,31 +225,27 @@ export class ConcurrentProcessor extends EventEmitter {
         throw new Error('ESM import.meta.url not available, trying CommonJS');
       }
     } catch {
-                    // CommonJS環境での__filename/__dirnameを試行
-       try {
-         // CommonJS環境でのグローバル変数を動的に確認
-         const globalThis = global as any;
-         if (globalThis.__filename && globalThis.__dirname) {
-           currentFileName = globalThis.__filename;
-           currentDirName = globalThis.__dirname;
-         } else {
-           throw new Error('CommonJS __filename/__dirname not available');
-         }
-       } catch {
-         // 最後のフォールバック: より堅牢なパス推測
-         // 現在実行中のモジュールのパスを推測
-         const stackTrace = new Error().stack;
-         const callerMatch = stackTrace?.match(/at.*\((.+):(\d+):(\d+)\)/);
-         
-         if (callerMatch && callerMatch[1]) {
-           currentFileName = callerMatch[1];
-           currentDirName = dirname(currentFileName);
-         } else {
-           // 最終フォールバック: servicesディレクトリを推測
-           currentFileName = 'unknown';
-           currentDirName = path.join(process.cwd(), 'src', 'services');
-         }
-       }
+      // CommonJS環境での__filename/__dirnameを直接確認
+      try {
+        // CommonJS環境では__filename/__dirnameがmodule-local変数として定義される
+        // eslint-disable-next-line @typescript-eslint/no-implied-eval
+        const checkCommonJS = new Function('return typeof __filename !== "undefined" && typeof __dirname !== "undefined"');
+        
+        if (checkCommonJS()) {
+          // eslint-disable-next-line @typescript-eslint/no-implied-eval
+          currentFileName = new Function('return __filename')();
+          // eslint-disable-next-line @typescript-eslint/no-implied-eval
+          currentDirName = new Function('return __dirname')();
+        } else {
+          throw new Error('CommonJS __filename/__dirname not available');
+        }
+      } catch {
+        // 安全なフォールバック: プロジェクト構造ベースのパス推測
+        // スタックトレース解析を避け、より予測可能な方法を使用
+        console.warn('Unable to determine current file location, using project structure fallback');
+        currentFileName = 'fallback';
+        currentDirName = path.join(process.cwd(), 'src', 'services');
+      }
     }
     
     // 実行時のファイル拡張子をチェック
