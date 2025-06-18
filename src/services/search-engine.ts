@@ -1,5 +1,7 @@
 import { Client } from 'typesense';
 import { SearchQuery, SearchResult, IndexConfiguration, ExpoDocument } from '../types/document.js';
+import { CacheManager } from './cache-manager.js';
+import { PerformanceMonitor } from './performance-monitor.js';
 
 export interface SearchEngineConfig {
   host: string;
@@ -11,8 +13,16 @@ export interface SearchEngineConfig {
 export class ExpoSearchEngine {
   private client: Client;
   private collectionName = 'expo_documents';
+  private cacheManager?: CacheManager;
+  private performanceMonitor?: PerformanceMonitor;
+  private searchCache = new Map<string, { result: SearchResult; timestamp: number }>();
+  private readonly CACHE_TTL = 5 * 60 * 1000; // 5分
 
-  constructor(config: SearchEngineConfig) {
+  constructor(
+    config: SearchEngineConfig, 
+    cacheManager?: CacheManager,
+    performanceMonitor?: PerformanceMonitor
+  ) {
     this.client = new Client({
       nodes: [{
         host: config.host,
@@ -22,6 +32,9 @@ export class ExpoSearchEngine {
       apiKey: config.apiKey,
       connectionTimeoutSeconds: 2
     });
+    
+    this.cacheManager = cacheManager;
+    this.performanceMonitor = performanceMonitor;
   }
 
   async initializeIndex(): Promise<void> {
@@ -97,7 +110,30 @@ export class ExpoSearchEngine {
   async search(query: SearchQuery): Promise<SearchResult> {
     const startTime = Date.now();
     
+    // パフォーマンス測定開始
+    const timer = this.performanceMonitor?.startTimer('search');
+    
     try {
+      // キャッシュキー生成
+      const cacheKey = this.generateSearchCacheKey(query);
+      
+      // キャッシュから検索
+      const cachedResult = await this.getCachedSearch(cacheKey);
+      if (cachedResult) {
+        this.performanceMonitor?.incrementCounter('cache_hits');
+        if (timer) {
+          this.performanceMonitor.endTimer(timer, 'search');
+        }
+        return {
+          ...cachedResult,
+          searchTime: Date.now() - startTime,
+          fromCache: true
+        };
+      }
+      
+      this.performanceMonitor?.incrementCounter('cache_misses');
+      
+      // Typesense検索実行
       const searchParams = this.buildSearchParams(query);
       const result = await this.client.collections(this.collectionName).documents().search(searchParams);
       
@@ -114,14 +150,28 @@ export class ExpoSearchEngine {
         }
       }
 
-      return {
+      const searchResult: SearchResult = {
         documents,
         totalCount: result.found || 0,
         facets,
-        searchTime: Date.now() - startTime
+        searchTime: Date.now() - startTime,
+        fromCache: false
       };
+      
+      // 結果をキャッシュに保存
+      await this.setCachedSearch(cacheKey, searchResult);
+      
+      // パフォーマンス測定終了
+      if (timer) {
+        this.performanceMonitor.endTimer(timer, 'search');
+      }
+      
+      return searchResult;
     } catch (error) {
       console.error('Search failed:', error);
+      if (timer) {
+        this.performanceMonitor.endTimer(timer, 'search');
+      }
       throw error;
     }
   }
@@ -506,5 +556,50 @@ export class ExpoSearchEngine {
       tags: doc.tags || [],
       codeBlocks: [] // インデックスには詳細は保存していない
     };
+  }
+
+  /**
+   * 検索キャッシュキー生成
+   */
+  private generateSearchCacheKey(query: SearchQuery): string {
+    return `search:${JSON.stringify(query)}`;
+  }
+
+  /**
+   * キャッシュから検索結果取得
+   */
+  private async getCachedSearch(cacheKey: string): Promise<SearchResult | null> {
+    if (this.cacheManager) {
+      return await this.cacheManager.get<SearchResult>(cacheKey);
+    }
+    
+    // ローカルキャッシュチェック
+    const cached = this.searchCache.get(cacheKey);
+    if (cached && (Date.now() - cached.timestamp) < this.CACHE_TTL) {
+      return cached.result;
+    }
+    
+    return null;
+  }
+
+  /**
+   * 検索結果をキャッシュに保存
+   */
+  private async setCachedSearch(cacheKey: string, result: SearchResult): Promise<void> {
+    if (this.cacheManager) {
+      await this.cacheManager.set(cacheKey, result, { ttl: 300 }); // 5分間キャッシュ
+    }
+    
+    // ローカルキャッシュにも保存
+    this.searchCache.set(cacheKey, {
+      result,
+      timestamp: Date.now()
+    });
+    
+    // ローカルキャッシュサイズ制限（100エントリ）
+    if (this.searchCache.size > 100) {
+      const firstKey = this.searchCache.keys().next().value;
+      this.searchCache.delete(firstKey);
+    }
   }
 } 

@@ -2,7 +2,7 @@ import { existsSync, writeFileSync, mkdirSync, rmSync } from 'fs';
 import { join } from 'path';
 import { ConfigManager } from '../src/utils/config';
 
-describe.skip('ConfigManager', () => {
+describe('ConfigManager', () => {
   const testConfigDir = join(process.cwd(), 'test-config');
   const originalEnv = process.env;
   const originalArgv = process.argv;
@@ -71,18 +71,63 @@ describe.skip('ConfigManager', () => {
 
   describe('Configuration File Loading', () => {
     test('should load default configuration when no env-specific config exists', () => {
-      // Create a default config
+      // Create a complete default config that passes validation
       const defaultConfig = {
-        server: { name: 'test-server' },
-        mcp: { default_transport: 'stdio' }
+        server: { name: 'test-server', version: '1.0.0' },
+        mcp: { 
+          protocol_version: '2024-11-05',
+          default_transport: 'stdio',
+          stdio: { encoding: 'utf-8', timeout_ms: 5000 },
+          http: { port: 3000, host: '0.0.0.0' }
+        },
+        storage: { local: { path: './data', max_size_gb: 10 } },
+        cache: {
+          memory: { max_size_mb: 200, ttl_seconds: 300 },
+          redis: { url: 'redis://localhost:6379', ttl_seconds: 3600 },
+          disk: { path: './cache', ttl_days: 7 }
+        },
+        security: {
+          input_validation: { max_tool_args_size_bytes: 2048 },
+          access_control: { rate_limit_per_session: 2000 },
+          tool_execution: { 
+            sandboxing_enabled: true,
+            resource_limits: { max_memory_mb: 256, max_cpu_time_ms: 5000 }
+          },
+          vulnerability_protection: { xss_protection: true, csrf_protection: true }
+        },
+        logging: { 
+          level: 'info', 
+          format: 'json',
+          file: { path: './logs', max_size_mb: 100 }
+        },
+        external_services: {
+          expo: { 
+            api_base: 'https://api.expo.dev',
+            rate_limit: { requests_per_minute: 60 }
+          },
+          typesense: { url: 'http://localhost:8108' },
+          github: { 
+            base_url: 'https://api.github.com',
+            rate_limit: { requests_per_hour: 1000 }
+          }
+        },
+        performance: {
+          targets: { concurrent_sessions: 200 },
+          monitoring: { enabled: true }
+        },
+        features: {
+          tools: {},
+          search: { typo_tolerance: true },
+          recommendations: { max_results: 10 }
+        }
       };
 
+      mkdirSync(join(testConfigDir, 'config'), { recursive: true });
       writeFileSync(
-        join(testConfigDir, 'default.json'),
+        join(testConfigDir, 'config', 'default.json'),
         JSON.stringify(defaultConfig, null, 2)
       );
 
-      // Mock the config path resolution
       process.chdir(testConfigDir);
       process.env.NODE_ENV = 'production';
 

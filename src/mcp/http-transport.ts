@@ -1,6 +1,13 @@
-import Fastify, { FastifyInstance } from 'fastify';
+import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { EventEmitter } from 'events';
 import { ServerResponse } from 'http';
+import cors from '@fastify/cors';
+import rateLimit from '@fastify/rate-limit';
+import websocket from '@fastify/websocket';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { JSONRPCMessage, JSONRPCRequest, JSONRPCResponse } from '@modelcontextprotocol/sdk/types.js';
+import { Config } from '../utils/config.js';
+import { PerformanceMonitor } from '../services/performance-monitor.js';
 
 /**
  * HTTP + Server-Sent Events Transport
@@ -9,14 +16,16 @@ import { ServerResponse } from 'http';
 export class HttpTransport extends EventEmitter {
   private server: FastifyInstance;
   private port: number;
-  private config: any;
+  private config: Config;
   private isRunning = false;
   private connections = new Map<string, SSEConnection>();
+  private performanceMonitor: PerformanceMonitor;
 
-  constructor(port: number, config: any) {
+  constructor(port: number, config: Config, performanceMonitor: PerformanceMonitor) {
     super();
     this.port = port;
     this.config = config;
+    this.performanceMonitor = performanceMonitor;
     
     // Fastify server setup
     this.server = Fastify({
@@ -157,6 +166,129 @@ export class HttpTransport extends EventEmitter {
           error: 'WebSocket upgrade required',
           message: 'This endpoint requires WebSocket upgrade headers',
         });
+      }
+    });
+
+    // 新規: Prometheusメトリクスエンドポイント
+    this.server.get('/metrics', async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const startTime = performance.now();
+        
+        const metrics = await this.performanceMonitor.getPrometheusMetrics();
+        
+        const latency = performance.now() - startTime;
+        this.performanceMonitor.recordTiming('metrics_endpoint', latency);
+        
+        reply
+          .header('Content-Type', 'text/plain; version=0.0.4; charset=utf-8')
+          .send(metrics);
+      } catch (error) {
+        console.error('Failed to generate metrics:', error);
+        reply.status(500).send({ error: 'Failed to generate metrics' });
+      }
+    });
+
+    // 新規: ヘルスチェックエンドポイント（詳細版）
+    this.server.get('/health', async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const startTime = performance.now();
+        
+        const metrics = this.performanceMonitor.getMetrics();
+        const activeAlerts = this.performanceMonitor.getActiveAlerts();
+        
+        const health = {
+          status: activeAlerts.some(alert => alert.rule.severity === 'critical') ? 'unhealthy' : 'healthy',
+          timestamp: new Date().toISOString(),
+          uptime: metrics.uptime_seconds,
+          version: process.env.npm_package_version || '1.0.0',
+          environment: process.env.NODE_ENV || 'development',
+          metrics: {
+            memory_usage_mb: metrics.memory_usage_mb,
+            cpu_usage_percent: metrics.cpu_usage_percent,
+            cache_hit_rate: metrics.cache_hit_rate,
+            concurrent_sessions: metrics.concurrent_sessions,
+            total_requests: metrics.total_requests,
+            error_rate: metrics.failed_requests / Math.max(metrics.total_requests, 1) * 100
+          },
+          alerts: {
+            active_count: activeAlerts.length,
+            critical_count: activeAlerts.filter(a => a.rule.severity === 'critical').length,
+            high_count: activeAlerts.filter(a => a.rule.severity === 'high').length
+          }
+        };
+        
+        const latency = performance.now() - startTime;
+        this.performanceMonitor.recordTiming('health_endpoint', latency);
+        
+        reply
+          .status(health.status === 'healthy' ? 200 : 503)
+          .send(health);
+      } catch (error) {
+        console.error('Health check failed:', error);
+        reply.status(500).send({ 
+          status: 'error', 
+          message: 'Health check failed',
+          timestamp: new Date().toISOString()
+        });
+      }
+    });
+
+    // 新規: アラート管理エンドポイント
+    this.server.get('/alerts', async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const activeAlerts = this.performanceMonitor.getActiveAlerts();
+        
+        reply.send({
+          alerts: activeAlerts,
+          count: activeAlerts.length,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error('Failed to get alerts:', error);
+        reply.status(500).send({ error: 'Failed to get alerts' });
+      }
+    });
+
+    // 新規: ダッシュボード用メトリクスエンドポイント
+    this.server.get('/dashboard/metrics', async (request: FastifyRequest, reply: FastifyReply) => {
+      try {
+        const metrics = this.performanceMonitor.getMetrics();
+        
+        const dashboardData = {
+          timestamp: new Date().toISOString(),
+          performance: {
+            response_times: {
+              stdio_p95: metrics.stdio_latency_ms.p95,
+              search_p95: metrics.search_latency_ms.p95,
+              sdk_lookup_p95: metrics.sdk_lookup_ms.p95,
+              config_generation_p95: metrics.config_generation_ms.p95,
+              tool_execution_p95: metrics.tool_execution_ms.p95
+            },
+            system: {
+              memory_usage_mb: metrics.memory_usage_mb,
+              cpu_usage_percent: metrics.cpu_usage_percent,
+              uptime_seconds: metrics.uptime_seconds
+            },
+            cache: {
+              hit_rate: metrics.cache_hit_rate,
+              hits: metrics.cache_hits,
+              misses: metrics.cache_misses
+            }
+          },
+          usage: {
+            total_requests: metrics.total_requests,
+            successful_requests: metrics.successful_requests,
+            failed_requests: metrics.failed_requests,
+            concurrent_sessions: metrics.concurrent_sessions,
+            error_rate: metrics.failed_requests / Math.max(metrics.total_requests, 1) * 100
+          },
+          alerts: this.performanceMonitor.getActiveAlerts()
+        };
+        
+        reply.send(dashboardData);
+      } catch (error) {
+        console.error('Failed to get dashboard metrics:', error);
+        reply.status(500).send({ error: 'Failed to get dashboard metrics' });
       }
     });
   }
