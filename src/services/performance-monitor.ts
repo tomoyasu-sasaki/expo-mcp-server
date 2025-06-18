@@ -127,6 +127,10 @@ export class PerformanceMonitor extends EventEmitter {
   // 新規: CPU使用率追跡修正
   private lastCpuUsage?: NodeJS.CpuUsage;
   private lastCpuMeasureTime?: number;
+  
+  // 新規: CPU使用率データの新鮮さ追跡
+  private cpuDataLastUpdated?: number;
+  private readonly CPU_DATA_FRESHNESS_MS = 2000; // 2秒以内なら新鮮とみなす
 
   // 新規: Prometheusメトリクス
   private prometheusRegistry: promClient.Registry;
@@ -671,47 +675,84 @@ export class PerformanceMonitor extends EventEmitter {
   }
 
   /**
-   * 新規: リソースメトリクス収集
+   * 新規: 正確なCPU使用率計算
+   */
+  private calculateCpuUsage(): { total: number; average: number } {
+    if (!this.lastCpuUsage || !this.lastCpuMeasureTime) {
+      return { total: 0, average: 0 };
+    }
+
+    const currentTime = Date.now();
+    const timeDelta = currentTime - this.lastCpuMeasureTime;
+    
+    if (timeDelta <= 0) {
+      return { total: 0, average: 0 };
+    }
+
+    const currentCpuUsage = process.cpuUsage(this.lastCpuUsage);
+    
+    // CPU時間はマイクロ秒単位、実時間差はミリ秒単位
+    // 正しい計算: (CPU時間マイクロ秒 / 実時間マイクロ秒) * 100
+    const cpuTotalMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
+    const timeDeltaMicroseconds = timeDelta * 1000; // ミリ秒をマイクロ秒に変換
+    const cpuUsagePercent = (cpuTotalMicroseconds / timeDeltaMicroseconds) * 100;
+    
+    // マルチコア総使用率（100%を超える可能性あり）
+    const totalUsage = Math.max(cpuUsagePercent, 0);
+    
+    // コア平均使用率（0-100%）
+    const cpuCount = os.cpus().length;
+    const averageUsage = Math.min(Math.max(cpuUsagePercent / cpuCount, 0), 100);
+    
+    return { total: totalUsage, average: averageUsage };
+  }
+
+  /**
+   * 新規: リアルタイムCPU使用率取得
+   */
+  private getCurrentCpuUsage(): { total: number; average: number } {
+    // データが新鮮なら既存のデータを返す
+    if (this.cpuDataLastUpdated && 
+        Date.now() - this.cpuDataLastUpdated < this.CPU_DATA_FRESHNESS_MS) {
+      return {
+        total: this.metrics.cpu_usage_percent,
+        average: this.metrics.cpu_usage_percent_avg
+      };
+    }
+
+    // 古いデータまたは初回の場合はリアルタイムで計算
+    const cpuUsage = this.calculateCpuUsage();
+    
+    // 計算後、次回測定のためにベースラインを更新
+    this.lastCpuUsage = process.cpuUsage();
+    this.lastCpuMeasureTime = Date.now();
+    this.cpuDataLastUpdated = Date.now();
+    
+    return cpuUsage;
+  }
+
+  /**
+   * 新規: リソースメトリクス収集（修正版）
    */
   private collectResourceMetrics(): void {
     try {
-      // CPU使用率（修正版）- 前回測定からの差分を計算
-      if (this.lastCpuUsage && this.lastCpuMeasureTime) {
-        const currentTime = Date.now();
-        const timeDelta = currentTime - this.lastCpuMeasureTime;
+      // CPU使用率（修正版）- 正確な単位変換
+      const cpuUsage = this.calculateCpuUsage();
+      
+      // 詳細CPU使用率情報を保存
+      if (this.lastCpuUsage) {
         const currentCpuUsage = process.cpuUsage(this.lastCpuUsage);
-        
-        // 詳細CPU使用率情報を保存
         this.metrics.resource_monitoring.cpuUsage = currentCpuUsage;
-        
-        // CPU使用率をパーセンテージに変換（マルチコア対応）
-        if (timeDelta > 0) {
-          // CPU時間はマイクロ秒単位、時間差はミリ秒単位
-          const cpuTotalMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
-          const cpuUsagePercent = (cpuTotalMicroseconds / (timeDelta * 1000)) * 100;
-          
-          // マルチコア総使用率（100%を超える可能性あり）
-          this.metrics.cpu_usage_percent = Math.max(cpuUsagePercent, 0);
-          
-          // コア平均使用率（0-100%）
-          const cpuCount = os.cpus().length;
-          this.metrics.cpu_usage_percent_avg = Math.min(Math.max(cpuUsagePercent / cpuCount, 0), 100);
-        } else {
-          this.metrics.cpu_usage_percent = 0;
-          this.metrics.cpu_usage_percent_avg = 0;
-        }
-        
-        // 次回測定のために現在の値を保存
-        this.lastCpuUsage = process.cpuUsage();
-        this.lastCpuMeasureTime = currentTime;
-      } else {
-        // 初回実行時の初期化
-        this.lastCpuUsage = process.cpuUsage();
-        this.lastCpuMeasureTime = Date.now();
-        this.metrics.cpu_usage_percent = 0;
-        this.metrics.cpu_usage_percent_avg = 0;
-        this.metrics.resource_monitoring.cpuUsage = { user: 0, system: 0 };
       }
+      
+      // CPU使用率メトリクス更新
+      this.metrics.cpu_usage_percent = cpuUsage.total;
+      this.metrics.cpu_usage_percent_avg = cpuUsage.average;
+      this.cpuDataLastUpdated = Date.now();
+      
+      // 次回測定のために現在の値を保存
+      this.lastCpuUsage = process.cpuUsage();
+      this.lastCpuMeasureTime = Date.now();
       
       // ロードアベレージ（Unix系のみ）
       if (process.platform !== 'win32') {
@@ -727,6 +768,10 @@ export class PerformanceMonitor extends EventEmitter {
       
     } catch (error) {
       console.error('Failed to collect resource metrics:', error);
+      // エラー時はCPU使用率を0にリセット
+      this.metrics.cpu_usage_percent = 0;
+      this.metrics.cpu_usage_percent_avg = 0;
+      this.cpuDataLastUpdated = Date.now();
     }
   }
 
@@ -887,7 +932,7 @@ export class PerformanceMonitor extends EventEmitter {
   }
 
   /**
-   * 新規: Prometheusメトリクス更新
+   * 新規: Prometheusメトリクス更新（修正版）- リアルタイムCPU使用率を含む
    */
   private updatePrometheusMetrics(): void {
     const memUsage = process.memoryUsage();
@@ -897,9 +942,10 @@ export class PerformanceMonitor extends EventEmitter {
     this.prometheusMetrics.memoryUsage.set({ type: 'heap_total' }, memUsage.heapTotal / 1024 / 1024);
     this.prometheusMetrics.memoryUsage.set({ type: 'external' }, memUsage.external / 1024 / 1024);
     
-    // CPU使用率メトリクス更新（マルチコア対応）
-    this.prometheusMetrics.cpuUsage.set({ type: 'total' }, this.metrics.cpu_usage_percent);
-    this.prometheusMetrics.cpuUsage.set({ type: 'average' }, this.metrics.cpu_usage_percent_avg);
+    // CPU使用率メトリクス更新（マルチコア対応）- リアルタイム取得
+    const currentCpuUsage = this.getCurrentCpuUsage();
+    this.prometheusMetrics.cpuUsage.set({ type: 'total' }, currentCpuUsage.total);
+    this.prometheusMetrics.cpuUsage.set({ type: 'average' }, currentCpuUsage.average);
     this.prometheusMetrics.concurrentSessions.set(this.metrics.concurrent_sessions);
     this.prometheusMetrics.uptime.set(this.metrics.uptime_seconds);
     
@@ -1225,10 +1271,17 @@ export class PerformanceMonitor extends EventEmitter {
   }
 
   /**
-   * メトリクス取得
+   * メトリクス取得（修正版）- リアルタイムCPU使用率を含む
    */
   getMetrics(): PerformanceMetrics {
-    return { ...this.metrics };
+    // リアルタイムCPU使用率を取得
+    const currentCpuUsage = this.getCurrentCpuUsage();
+    
+    return {
+      ...this.metrics,
+      cpu_usage_percent: currentCpuUsage.total,
+      cpu_usage_percent_avg: currentCpuUsage.average
+    };
   }
 
   /**
@@ -1252,7 +1305,7 @@ export class PerformanceMonitor extends EventEmitter {
   }
 
   /**
-   * リセット
+   * リセット（修正版）- CPU使用率データ新鮮さ追跡も含む
    */
   reset(): void {
     this.timings.clear();
@@ -1261,6 +1314,7 @@ export class PerformanceMonitor extends EventEmitter {
     // CPU使用率追跡もリセット
     this.lastCpuUsage = process.cpuUsage();
     this.lastCpuMeasureTime = Date.now();
+    this.cpuDataLastUpdated = undefined; // CPU使用率データ新鮮さもリセット
     
     this.metrics = {
       stdio_latency_ms: this.createEmptyLatencyMetrics(),
