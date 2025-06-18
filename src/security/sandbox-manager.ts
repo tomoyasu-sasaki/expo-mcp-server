@@ -485,13 +485,32 @@ export class SandboxManager extends EventEmitter {
         warn: (...args: any[]) => this.logSandboxOutput(contextId, 'warn', args),
       },
 
-             // 制限付きsetTimeout/setInterval
-       setTimeout: (callback: () => void, delay: number) => {
-         if (delay > this.config.resource_limits.max_execution_time_ms) {
-           throw new Error('Timeout delay exceeds limit');
-         }
-         return setTimeout(callback, Math.min(delay, 5000)); // 最大5秒
-       },
+      // 制限付きsetTimeout/setInterval
+      setTimeout: (callback: (...args: any[]) => void, delay: number, ...args: any[]): NodeJS.Timeout => {
+        // 合理的な最大遅延時間を設定値と5秒の小さい方に設定
+        const maxDelay = Math.min(this.config.resource_limits.max_execution_time_ms, 5000);
+        
+        if (delay > maxDelay) {
+          throw new Error(`Timeout delay ${delay}ms exceeds limit ${maxDelay}ms`);
+        }
+        
+        return setTimeout(callback, delay, ...args);
+      },
+      
+      setInterval: (callback: (...args: any[]) => void, delay: number, ...args: any[]): NodeJS.Timeout => {
+        // setIntervalは繰り返し実行されるため、より厳しい制限を適用
+        const maxDelay = Math.min(this.config.resource_limits.max_execution_time_ms, 2000);
+        
+        if (delay > maxDelay) {
+          throw new Error(`Interval delay ${delay}ms exceeds limit ${maxDelay}ms`);
+        }
+        
+        if (delay < 100) {
+          throw new Error(`Interval delay ${delay}ms is too short (minimum: 100ms)`);
+        }
+        
+        return setInterval(callback, delay, ...args);
+      },
       
       // ファイルアクセス（制限付き）
       fs: this.createRestrictedFileSystem(contextId),

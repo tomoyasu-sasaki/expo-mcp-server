@@ -120,9 +120,9 @@ export class ExpoSearchEngine {
       // キャッシュから検索
       const cachedResult = await this.getCachedSearch(cacheKey);
       if (cachedResult) {
-        this.performanceMonitor?.incrementCounter('cache_hits');
+        this.performanceMonitor?.incrementCounter('cache_hits', 'search');
         if (timer) {
-          this.performanceMonitor.endTimer(timer, 'search');
+          this.performanceMonitor?.endTimer(timer, 'search');
         }
         return {
           ...cachedResult,
@@ -131,7 +131,7 @@ export class ExpoSearchEngine {
         };
       }
       
-      this.performanceMonitor?.incrementCounter('cache_misses');
+      this.performanceMonitor?.incrementCounter('cache_misses', 'search');
       
       // Typesense検索実行
       const searchParams = this.buildSearchParams(query);
@@ -163,14 +163,14 @@ export class ExpoSearchEngine {
       
       // パフォーマンス測定終了
       if (timer) {
-        this.performanceMonitor.endTimer(timer, 'search');
+        this.performanceMonitor?.endTimer(timer, 'search');
       }
       
       return searchResult;
     } catch (error) {
       console.error('Search failed:', error);
       if (timer) {
-        this.performanceMonitor.endTimer(timer, 'search');
+        this.performanceMonitor?.endTimer(timer, 'search');
       }
       throw error;
     }
@@ -599,7 +599,9 @@ export class ExpoSearchEngine {
     // ローカルキャッシュサイズ制限（100エントリ）
     if (this.searchCache.size > 100) {
       const firstKey = this.searchCache.keys().next().value;
-      this.searchCache.delete(firstKey);
+      if (firstKey) {
+        this.searchCache.delete(firstKey);
+      }
     }
   }
 } 

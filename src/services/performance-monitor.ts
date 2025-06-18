@@ -35,7 +35,8 @@ export interface PerformanceMetrics {
   
   // システムメトリクス
   memory_usage_mb: number;
-  cpu_usage_percent: number;
+  cpu_usage_percent: number; // マルチコア総使用率（100%を超える可能性あり）
+  cpu_usage_percent_avg: number; // コア平均使用率（0-100%）
   cache_hit_rate: number;
   concurrent_sessions: number;
   
@@ -193,6 +194,7 @@ export class PerformanceMonitor extends EventEmitter {
       tool_execution_ms: this.createEmptyLatencyMetrics(),
       memory_usage_mb: 0,
       cpu_usage_percent: 0,
+      cpu_usage_percent_avg: 0,
       cache_hit_rate: 0,
       concurrent_sessions: 0,
       total_requests: 0,
@@ -289,7 +291,8 @@ export class PerformanceMonitor extends EventEmitter {
 
       cpuUsage: new promClient.Gauge({
         name: 'expo_mcp_cpu_usage_percent',
-        help: 'Current CPU usage percentage',
+        help: 'Current CPU usage percentage (multi-core total, can exceed 100%)',
+        labelNames: ['type'],
         registers: [this.prometheusRegistry]
       }),
 
@@ -500,11 +503,21 @@ export class PerformanceMonitor extends EventEmitter {
         },
         {
           name: 'cpu_usage_high',
-          metric: 'cpu_usage_percent',
+          metric: 'cpu_usage_percent_avg',
           threshold: 80,
           operator: 'gt',
           severity: 'high',
-          description: 'CPU usage exceeds 80%',
+          description: 'Average CPU usage per core exceeds 80%',
+          enabled: true,
+          cooldownMinutes: 5
+        },
+        {
+          name: 'cpu_usage_total_high',
+          metric: 'cpu_usage_percent',
+          threshold: 200,
+          operator: 'gt',
+          severity: 'medium',
+          description: 'Total CPU usage exceeds 200% (high multi-core utilization)',
           enabled: true,
           cooldownMinutes: 5
         },
@@ -671,16 +684,21 @@ export class PerformanceMonitor extends EventEmitter {
         // 詳細CPU使用率情報を保存
         this.metrics.resource_monitoring.cpuUsage = currentCpuUsage;
         
-        // CPU使用率をパーセンテージに変換
+        // CPU使用率をパーセンテージに変換（マルチコア対応）
         if (timeDelta > 0) {
           // CPU時間はマイクロ秒単位、時間差はミリ秒単位
           const cpuTotalMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
           const cpuUsagePercent = (cpuTotalMicroseconds / (timeDelta * 1000)) * 100;
           
-          // 実用的な範囲に制限（0-100%）
-          this.metrics.cpu_usage_percent = Math.min(Math.max(cpuUsagePercent, 0), 100);
+          // マルチコア総使用率（100%を超える可能性あり）
+          this.metrics.cpu_usage_percent = Math.max(cpuUsagePercent, 0);
+          
+          // コア平均使用率（0-100%）
+          const cpuCount = os.cpus().length;
+          this.metrics.cpu_usage_percent_avg = Math.min(Math.max(cpuUsagePercent / cpuCount, 0), 100);
         } else {
           this.metrics.cpu_usage_percent = 0;
+          this.metrics.cpu_usage_percent_avg = 0;
         }
         
         // 次回測定のために現在の値を保存
@@ -691,6 +709,7 @@ export class PerformanceMonitor extends EventEmitter {
         this.lastCpuUsage = process.cpuUsage();
         this.lastCpuMeasureTime = Date.now();
         this.metrics.cpu_usage_percent = 0;
+        this.metrics.cpu_usage_percent_avg = 0;
         this.metrics.resource_monitoring.cpuUsage = { user: 0, system: 0 };
       }
       
@@ -878,7 +897,9 @@ export class PerformanceMonitor extends EventEmitter {
     this.prometheusMetrics.memoryUsage.set({ type: 'heap_total' }, memUsage.heapTotal / 1024 / 1024);
     this.prometheusMetrics.memoryUsage.set({ type: 'external' }, memUsage.external / 1024 / 1024);
     
-    this.prometheusMetrics.cpuUsage.set(this.metrics.cpu_usage_percent);
+    // CPU使用率メトリクス更新（マルチコア対応）
+    this.prometheusMetrics.cpuUsage.set({ type: 'total' }, this.metrics.cpu_usage_percent);
+    this.prometheusMetrics.cpuUsage.set({ type: 'average' }, this.metrics.cpu_usage_percent_avg);
     this.prometheusMetrics.concurrentSessions.set(this.metrics.concurrent_sessions);
     this.prometheusMetrics.uptime.set(this.metrics.uptime_seconds);
     
@@ -967,6 +988,33 @@ export class PerformanceMonitor extends EventEmitter {
   }
 
   /**
+   * カウンターメトリクス増加
+   */
+  incrementCounter(counterName: string, cacheType = 'memory'): void {
+    switch (counterName) {
+      case 'cache_hits':
+        this.metrics.cache_hits++;
+        this.prometheusMetrics.cacheHits.inc({ cache_type: cacheType });
+        break;
+      case 'cache_misses':
+        this.metrics.cache_misses++;
+        this.prometheusMetrics.cacheMisses.inc({ cache_type: cacheType });
+        break;
+      case 'total_requests':
+        this.metrics.total_requests++;
+        break;
+      case 'successful_requests':
+        this.metrics.successful_requests++;
+        break;
+      case 'failed_requests':
+        this.metrics.failed_requests++;
+        break;
+      default:
+        console.warn(`Unknown counter: ${counterName}`);
+    }
+  }
+
+  /**
    * 新規: Prometheusメトリクス出力
    */
   async getPrometheusMetrics(): Promise<string> {
@@ -1036,6 +1084,8 @@ export class PerformanceMonitor extends EventEmitter {
         return this.metrics.memory_usage_mb;
       case 'cpu_usage_percent':
         return this.metrics.cpu_usage_percent;
+      case 'cpu_usage_percent_avg':
+        return this.metrics.cpu_usage_percent_avg;
       case 'error_rate':
         {
           const total = this.metrics.total_requests;
@@ -1220,6 +1270,7 @@ export class PerformanceMonitor extends EventEmitter {
       tool_execution_ms: this.createEmptyLatencyMetrics(),
       memory_usage_mb: 0,
       cpu_usage_percent: 0,
+      cpu_usage_percent_avg: 0,
       cache_hit_rate: 0,
       concurrent_sessions: 0,
       total_requests: 0,

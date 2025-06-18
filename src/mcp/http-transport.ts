@@ -1,11 +1,6 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { EventEmitter } from 'events';
 import { ServerResponse } from 'http';
-import cors from '@fastify/cors';
-import rateLimit from '@fastify/rate-limit';
-import websocket from '@fastify/websocket';
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { JSONRPCMessage, JSONRPCRequest, JSONRPCResponse } from '@modelcontextprotocol/sdk/types.js';
 import { Config } from '../utils/config.js';
 import { PerformanceMonitor } from '../services/performance-monitor.js';
 
@@ -30,8 +25,8 @@ export class HttpTransport extends EventEmitter {
     // Fastify server setup
     this.server = Fastify({
       logger: config.logging?.level === 'debug',
-      requestTimeout: config.protocol?.transports?.http?.timeout_ms || 30000,
-      bodyLimit: config.protocol?.transports?.stdio?.max_message_size_bytes || 1048576,
+      requestTimeout: config.mcp?.http?.timeout_ms || 30000,
+      bodyLimit: config.mcp?.stdio?.max_message_size_bytes || 1048576,
     });
     
     this.setupRoutes();

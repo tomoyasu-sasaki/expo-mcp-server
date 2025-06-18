@@ -1,6 +1,7 @@
 import { Worker } from 'worker_threads';
 import * as os from 'os';
 import * as path from 'path';
+import * as fs from 'fs';
 import { EventEmitter } from 'events';
 
 export interface TaskData {
@@ -160,53 +161,88 @@ export class ConcurrentProcessor extends EventEmitter {
   private async createWorker(): Promise<Worker> {
     const workerId = this.nextWorkerId++;
     
-    // TypeScriptコンパイル済みファイルのパスを取得
-    const workerPath = this.getWorkerPath();
-    
-    const worker = new Worker(workerPath, {
-      workerData: {
-        workerId,
-        config: this.config
-      }
-    });
+    try {
+      // ワーカーファイルのパスを取得（例外が発生する可能性あり）
+      const workerPath = this.getWorkerPath();
+      
+      // デバッグ用ログ
+      console.log(`Creating worker ${workerId} with path: ${workerPath}`);
+      
+      const worker = new Worker(workerPath, {
+        workerData: {
+          workerId,
+          config: this.config
+        }
+      });
 
-    worker.on('message', (result: TaskResult | { type: string; workerId: number }) => {
-      if ('type' in result && result.type === 'worker_ready') {
-        console.log(`Worker ${result.workerId} is ready`);
-      } else {
-        this.handleTaskResult(result as TaskResult);
-      }
-    });
+      worker.on('message', (result: TaskResult | { type: string; workerId: number }) => {
+        if ('type' in result && result.type === 'worker_ready') {
+          console.log(`Worker ${result.workerId} is ready`);
+        } else {
+          this.handleTaskResult(result as TaskResult);
+        }
+      });
 
-    worker.on('error', (error) => {
-      console.error(`Worker ${workerId} error:`, error);
-      this.removeWorker(workerId);
-    });
+      worker.on('error', (error) => {
+        console.error(`Worker ${workerId} error:`, error);
+        this.removeWorker(workerId);
+      });
 
-    worker.on('exit', (code) => {
-      console.log(`Worker ${workerId} exited with code ${code}`);
-      this.removeWorker(workerId);
-    });
+      worker.on('exit', (code) => {
+        console.log(`Worker ${workerId} exited with code ${code}`);
+        this.removeWorker(workerId);
+      });
 
-    this.workers.set(workerId, worker);
-    this.stats.activeWorkers = this.workers.size;
-    
-    return worker;
+      this.workers.set(workerId, worker);
+      this.stats.activeWorkers = this.workers.size;
+      
+      return worker;
+    } catch (error) {
+      console.error(`Failed to create worker ${workerId}:`, error);
+      throw error;
+    }
   }
 
   /**
    * ワーカーファイルのパスを取得
    */
   private getWorkerPath(): string {
-    // 開発環境（TypeScript）と本番環境（JavaScript）を考慮
-    const isDevelopment = process.env.NODE_ENV === 'development' || __filename.endsWith('.ts');
+    // Node.js Worker threadsはTypeScriptを直接実行できないため、
+    // 常にコンパイル済みJavaScriptファイルのパスを返す
     
-    if (isDevelopment) {
-      // 開発環境：TypeScriptファイルを直接指定（ts-node使用時）
-      return path.join(__dirname, 'concurrent-processor-worker.ts');
+    // 実行時のファイル拡張子をチェック
+    const currentFileExtension = path.extname(__filename);
+    const isCompiledJS = currentFileExtension === '.js';
+    
+    // 常にJavaScriptワーカーファイルのパスを使用
+    const workerPath = path.join(__dirname, 'concurrent-processor-worker.js');
+    
+    if (isCompiledJS) {
+      // 本番環境または既にコンパイル済み環境
+      if (fs.existsSync(workerPath)) {
+        return workerPath;
+      } else {
+        throw new Error(
+          `Worker file not found: ${workerPath}. ` +
+          'The compiled JavaScript worker file is missing. Please check the build process.'
+        );
+      }
     } else {
-      // 本番環境：コンパイル済みJavaScriptファイルを指定
-      return path.join(__dirname, 'concurrent-processor-worker.js');
+      // 開発環境（ts-node使用時）: TypeScriptファイルはWorker Threadsで直接実行不可
+      // ts-nodeを使用している場合でも、ワーカーファイルは事前にコンパイルが必要
+      
+      // ファイルが存在するかチェック
+      if (fs.existsSync(workerPath)) {
+        return workerPath;
+      } else {
+        // コンパイル済みファイルが存在しない場合の詳細エラー
+        throw new Error(
+          `Worker file not found: ${workerPath}. ` +
+          'Please run "npm run build" to compile TypeScript files before using Worker threads. ' +
+          'Node.js Worker threads cannot execute TypeScript files directly. ' +
+          'Current environment: development (ts-node)'
+        );
+      }
     }
   }
 
