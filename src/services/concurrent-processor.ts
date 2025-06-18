@@ -164,7 +164,7 @@ export class ConcurrentProcessor extends EventEmitter {
     const workerId = this.nextWorkerId++;
     
     try {
-      // ワーカーファイルのパスを取得（例外が発生する可能性あり）
+      // ワーカーファイルのパスを取得
       const workerPath = this.getWorkerPath();
       
       // デバッグ用ログ
@@ -207,92 +207,120 @@ export class ConcurrentProcessor extends EventEmitter {
 
   /**
    * ワーカーファイルのパスを取得
+   * セキュア版: new Function()によるeval-like動作を排除
    */
   private getWorkerPath(): string {
-    // Node.js Worker threadsはTypeScriptを直接実行できないため、
-    // 常にコンパイル済みJavaScriptファイルのパスを返す
+    // 安全なパス解決戦略: プロジェクト構造を前提とした決定的なパス生成
+    const projectRoot = process.cwd();
+    const workerFileName = 'concurrent-processor-worker.js';
     
-    let currentFileName: string;
-    let currentDirName: string;
+    // 環境判定（Node.js標準機能のみ使用）
+    const isRunningFromDist = this.isRunningFromCompiledCode();
     
+    // 優先順位付きパス候補リスト
+    const candidatePaths: string[] = [];
+    
+    if (isRunningFromDist) {
+      // コンパイル済み環境での実行
+      candidatePaths.push(
+        path.join(projectRoot, 'dist', 'services', workerFileName),
+        path.join(projectRoot, 'lib', 'services', workerFileName),
+        path.join(projectRoot, 'build', 'services', workerFileName)
+      );
+    } else {
+      // 開発環境での実行（TypeScript環境）
+      candidatePaths.push(
+        path.join(projectRoot, 'dist', 'services', workerFileName),
+        path.join(projectRoot, 'src', 'services', workerFileName),
+        path.join(projectRoot, 'lib', 'services', workerFileName)
+      );
+    }
+    
+    // ESM環境でのimport.meta.urlによる現在位置特定（安全）
     try {
-      // ESモジュール環境でimport.meta.urlが利用可能な場合
       if (typeof import.meta !== 'undefined' && import.meta.url) {
-        currentFileName = fileURLToPath(import.meta.url);
-        currentDirName = dirname(currentFileName);
-      } else {
-        // CommonJS環境での__filename/__dirnameの検出を試行
-        throw new Error('ESM import.meta.url not available, trying CommonJS');
+        const currentDir = dirname(fileURLToPath(import.meta.url));
+        candidatePaths.unshift(path.join(currentDir, workerFileName));
       }
-    } catch {
-      // CommonJS環境での__filename/__dirnameを直接確認
-      try {
-        // CommonJS環境では__filename/__dirnameがmodule-local変数として定義される
-        // eslint-disable-next-line @typescript-eslint/no-implied-eval
-        const checkCommonJS = new Function('return typeof __filename !== "undefined" && typeof __dirname !== "undefined"');
-        
-        if (checkCommonJS()) {
-          // eslint-disable-next-line @typescript-eslint/no-implied-eval
-          currentFileName = new Function('return __filename')();
-          // eslint-disable-next-line @typescript-eslint/no-implied-eval
-          currentDirName = new Function('return __dirname')();
-        } else {
-          throw new Error('CommonJS __filename/__dirname not available');
-        }
-      } catch {
-        // 安全なフォールバック: プロジェクト構造ベースのパス推測
-        // スタックトレース解析を避け、より予測可能な方法を使用
-        console.warn('Unable to determine current file location, using project structure fallback');
-        currentFileName = 'fallback';
-        currentDirName = path.join(process.cwd(), 'src', 'services');
+    } catch (error) {
+      // import.meta.url利用不可の場合は無視（CommonJS環境）
+      console.debug('import.meta.url not available, using project structure paths');
+    }
+    
+    // 最初に見つかった有効なパスを使用
+    for (const candidatePath of candidatePaths) {
+      if (this.isValidWorkerFile(candidatePath)) {
+        console.log(`Found worker file at: ${candidatePath}`);
+        return candidatePath;
       }
     }
     
-    // 実行時のファイル拡張子をチェック
-    const currentFileExtension = path.extname(currentFileName);
-    const isCompiledJS = currentFileExtension === '.js';
+    // すべてのパスで見つからない場合の詳細エラー
+    throw this.createWorkerNotFoundError(candidatePaths, isRunningFromDist);
+  }
+
+  /**
+   * コンパイル済みコードから実行されているかを判定
+   */
+  private isRunningFromCompiledCode(): boolean {
+    // スタックトレースを安全に解析してファイル拡張子を確認
+    const stack = new Error().stack;
+    if (!stack) return false;
     
-    // 複数の可能なパスを試行（優先順位順）
-    const possiblePaths = [
-      // 同じディレクトリ内（最優先 - 通常のコンパイル済み環境）
-      path.join(currentDirName, 'concurrent-processor-worker.js'),
-      // 現在のディレクトリがsrcの場合、distディレクトリの対応する場所
-      currentDirName.includes('src/services') 
-        ? path.join(currentDirName.replace('src/services', 'dist/services'), 'concurrent-processor-worker.js')
-        : null,
-      // プロジェクトルートからのdistパス
-      path.join(process.cwd(), 'dist', 'services', 'concurrent-processor-worker.js'),
-      // 開発環境でのsrcディレクトリからの相対パス（ビルドされたファイルを探す）
-      path.join(process.cwd(), 'src', 'services', 'concurrent-processor-worker.js'),
-      // NodeModulesやカスタムビルド出力の可能性
-      path.resolve(process.cwd(), 'lib/services/concurrent-processor-worker.js'),
-      path.resolve(process.cwd(), 'build/services/concurrent-processor-worker.js')
-    ].filter(Boolean) as string[]; // nullを除外
-    
-    // 存在するパスを検索
-    for (const workerPath of possiblePaths) {
-      if (fs.existsSync(workerPath)) {
-        console.log(`Found worker file at: ${workerPath}`);
-        return workerPath;
+    // スタックトレースの最初の行（現在のファイル）を解析
+    const stackLines = stack.split('\n');
+    for (const line of stackLines) {
+      if (line.includes('concurrent-processor') && line.includes('.js')) {
+        return true;
+      }
+      if (line.includes('concurrent-processor') && line.includes('.ts')) {
+        return false;
       }
     }
     
-    // すべてのパスで見つからない場合のエラー
-    const pathList = possiblePaths.map(p => `  - ${p} (exists: ${fs.existsSync(p)})`).join('\n');
-    const environmentInfo = isCompiledJS ? 'production/compiled' : 'development (ts-node)';
+    // フォールバック: dist/またはbuild/ディレクトリの存在をチェック
+    return fs.existsSync(path.join(process.cwd(), 'dist')) || 
+           fs.existsSync(path.join(process.cwd(), 'build'));
+  }
+
+  /**
+   * ワーカーファイルの有効性を検証
+   */
+  private isValidWorkerFile(filePath: string): boolean {
+    try {
+      if (!fs.existsSync(filePath)) {
+        return false;
+      }
+      
+      const stats = fs.statSync(filePath);
+      return stats.isFile() && stats.size > 0;
+    } catch (error) {
+      console.debug(`Cannot access worker file ${filePath}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * ワーカーファイル未発見エラーを生成
+   */
+  private createWorkerNotFoundError(searchedPaths: string[], isCompiledEnv: boolean): Error {
+    const pathList = searchedPaths
+      .map(p => `  - ${p} (exists: ${fs.existsSync(p)})`)
+      .join('\n');
     
-    throw new Error(
-      `Worker file not found. Searched paths:\n${pathList}\n\n` +
+    const environmentInfo = isCompiledEnv ? 'production/compiled' : 'development (TypeScript)';
+    
+    return new Error(
+      `Worker file 'concurrent-processor-worker.js' not found.\n\n` +
+      `Searched paths:\n${pathList}\n\n` +
       `Environment: ${environmentInfo}\n` +
-      `Current file: ${currentFileName}\n` +
-      `Current directory: ${currentDirName}\n` +
-      `Process cwd: ${process.cwd()}\n\n` +
-      'Troubleshooting steps:\n' +
-      '1. Run "npm run build" to compile TypeScript files\n' +
-      '2. Ensure the worker file exists in one of the searched locations\n' +
-      '3. Check that the file is named "concurrent-processor-worker.js"\n' +
-      '4. Verify that Node.js can access the file (permissions)\n' +
-      '5. For development: ensure the compiled output directory structure matches src/'
+      `Process working directory: ${process.cwd()}\n\n` +
+      `Resolution steps:\n` +
+      `1. Run "npm run build" to compile TypeScript files\n` +
+      `2. Ensure worker file exists in dist/services/ directory\n` +
+      `3. Verify file permissions allow Node.js to read the file\n` +
+      `4. Check that the file is not corrupted (size > 0)\n\n` +
+      `For development: Make sure TypeScript compilation outputs to dist/ directory`
     );
   }
 
