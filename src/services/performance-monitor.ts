@@ -122,6 +122,10 @@ export class PerformanceMonitor extends EventEmitter {
   private memorySnapshots: number[] = [];
   private gcWatcher?: NodeJS.Timeout;
   private initialCpuUsage?: NodeJS.CpuUsage;
+  
+  // 新規: CPU使用率追跡修正
+  private lastCpuUsage?: NodeJS.CpuUsage;
+  private lastCpuMeasureTime?: number;
 
   // 新規: Prometheusメトリクス
   private prometheusRegistry: promClient.Registry;
@@ -172,6 +176,10 @@ export class PerformanceMonitor extends EventEmitter {
     this.config = config.performance;
     this.startTime = Date.now();
     this.initialCpuUsage = process.cpuUsage();
+    
+    // CPU使用率追跡初期化
+    this.lastCpuUsage = process.cpuUsage();
+    this.lastCpuMeasureTime = Date.now();
     
     // Prometheusレジストリ初期化
     this.prometheusRegistry = new promClient.Registry();
@@ -654,9 +662,36 @@ export class PerformanceMonitor extends EventEmitter {
    */
   private collectResourceMetrics(): void {
     try {
-      // CPU使用率（詳細）
-      if (this.initialCpuUsage) {
-        this.metrics.resource_monitoring.cpuUsage = process.cpuUsage(this.initialCpuUsage);
+      // CPU使用率（修正版）- 前回測定からの差分を計算
+      if (this.lastCpuUsage && this.lastCpuMeasureTime) {
+        const currentTime = Date.now();
+        const timeDelta = currentTime - this.lastCpuMeasureTime;
+        const currentCpuUsage = process.cpuUsage(this.lastCpuUsage);
+        
+        // 詳細CPU使用率情報を保存
+        this.metrics.resource_monitoring.cpuUsage = currentCpuUsage;
+        
+        // CPU使用率をパーセンテージに変換
+        if (timeDelta > 0) {
+          // CPU時間はマイクロ秒単位、時間差はミリ秒単位
+          const cpuTotalMicroseconds = currentCpuUsage.user + currentCpuUsage.system;
+          const cpuUsagePercent = (cpuTotalMicroseconds / (timeDelta * 1000)) * 100;
+          
+          // 実用的な範囲に制限（0-100%）
+          this.metrics.cpu_usage_percent = Math.min(Math.max(cpuUsagePercent, 0), 100);
+        } else {
+          this.metrics.cpu_usage_percent = 0;
+        }
+        
+        // 次回測定のために現在の値を保存
+        this.lastCpuUsage = process.cpuUsage();
+        this.lastCpuMeasureTime = currentTime;
+      } else {
+        // 初回実行時の初期化
+        this.lastCpuUsage = process.cpuUsage();
+        this.lastCpuMeasureTime = Date.now();
+        this.metrics.cpu_usage_percent = 0;
+        this.metrics.resource_monitoring.cpuUsage = { user: 0, system: 0 };
       }
       
       // ロードアベレージ（Unix系のみ）
@@ -822,11 +857,8 @@ export class PerformanceMonitor extends EventEmitter {
     const memUsage = process.memoryUsage();
     this.metrics.memory_usage_mb = memUsage.heapUsed / 1024 / 1024;
     
-    // CPU使用率は概算（実装を簡略化）
-    this.metrics.cpu_usage_percent = Math.min(
-      (this.metrics.total_requests / 100) * 10, 
-      100
-    );
+    // CPU使用率は collectResourceMetrics() で正確に計算されるため、ここでは削除
+    // この概算実装は不正確でした
     
     this.metrics.uptime_seconds = Math.floor((Date.now() - this.startTime) / 1000);
     this.metrics.last_updated = Date.now();
@@ -1175,6 +1207,11 @@ export class PerformanceMonitor extends EventEmitter {
   reset(): void {
     this.timings.clear();
     this.activeTimers.clear();
+    
+    // CPU使用率追跡もリセット
+    this.lastCpuUsage = process.cpuUsage();
+    this.lastCpuMeasureTime = Date.now();
+    
     this.metrics = {
       stdio_latency_ms: this.createEmptyLatencyMetrics(),
       search_latency_ms: this.createEmptyLatencyMetrics(),

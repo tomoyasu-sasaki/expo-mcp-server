@@ -1,5 +1,6 @@
-import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
+import { Worker } from 'worker_threads';
 import * as os from 'os';
+import * as path from 'path';
 import { EventEmitter } from 'events';
 
 export interface TaskData {
@@ -25,11 +26,17 @@ export interface WorkerPoolConfig {
   enableGC: boolean;
 }
 
+type TaskCallback = {
+  resolve: (value: any) => void;
+  reject: (reason?: any) => void;
+};
+
 export class ConcurrentProcessor extends EventEmitter {
   private workers: Map<number, Worker> = new Map();
   private taskQueue: TaskData[] = [];
   private activeTasks: Map<string, { worker: Worker; startTime: number }> = new Map();
-  private pendingCallbacks: Map<string, { resolve: Function; reject: Function }> = new Map();
+  private pendingCallbacks: Map<string, TaskCallback> = new Map();
+  private taskTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private config: WorkerPoolConfig;
   private isInitialized = false;
   private nextWorkerId = 0;
@@ -107,6 +114,8 @@ export class ConcurrentProcessor extends EventEmitter {
       const timeout = setTimeout(() => {
         this.handleTaskTimeout(task.id);
       }, task.timeout || this.config.taskTimeoutMs);
+      
+      this.taskTimeouts.set(task.id, timeout);
 
       // すぐに処理を試行
       this.processQueue();
@@ -151,15 +160,22 @@ export class ConcurrentProcessor extends EventEmitter {
   private async createWorker(): Promise<Worker> {
     const workerId = this.nextWorkerId++;
     
-    const worker = new Worker(__filename, {
+    // TypeScriptコンパイル済みファイルのパスを取得
+    const workerPath = this.getWorkerPath();
+    
+    const worker = new Worker(workerPath, {
       workerData: {
         workerId,
         config: this.config
       }
     });
 
-    worker.on('message', (result: TaskResult) => {
-      this.handleTaskResult(result);
+    worker.on('message', (result: TaskResult | { type: string; workerId: number }) => {
+      if ('type' in result && result.type === 'worker_ready') {
+        console.log(`Worker ${result.workerId} is ready`);
+      } else {
+        this.handleTaskResult(result as TaskResult);
+      }
     });
 
     worker.on('error', (error) => {
@@ -176,6 +192,22 @@ export class ConcurrentProcessor extends EventEmitter {
     this.stats.activeWorkers = this.workers.size;
     
     return worker;
+  }
+
+  /**
+   * ワーカーファイルのパスを取得
+   */
+  private getWorkerPath(): string {
+    // 開発環境（TypeScript）と本番環境（JavaScript）を考慮
+    const isDevelopment = process.env.NODE_ENV === 'development' || __filename.endsWith('.ts');
+    
+    if (isDevelopment) {
+      // 開発環境：TypeScriptファイルを直接指定（ts-node使用時）
+      return path.join(__dirname, 'concurrent-processor-worker.ts');
+    } else {
+      // 本番環境：コンパイル済みJavaScriptファイルを指定
+      return path.join(__dirname, 'concurrent-processor-worker.js');
+    }
   }
 
   /**
@@ -209,9 +241,10 @@ export class ConcurrentProcessor extends EventEmitter {
    * 利用可能なワーカーを検索
    */
   private findAvailableWorker(): Worker | null {
-    for (const [workerId, worker] of this.workers) {
-      const isAvailable = ![...this.activeTasks.values()]
-        .some(task => task.worker === worker);
+    const workers = Array.from(this.workers.values());
+    for (const worker of workers) {
+      const activeTasks = Array.from(this.activeTasks.values());
+      const isAvailable = !activeTasks.some(task => task.worker === worker);
       
       if (isAvailable) {
         return worker;
@@ -226,6 +259,12 @@ export class ConcurrentProcessor extends EventEmitter {
   private handleTaskResult(result: TaskResult): void {
     const callback = this.pendingCallbacks.get(result.id);
     const activeTask = this.activeTasks.get(result.id);
+    const timeout = this.taskTimeouts.get(result.id);
+
+    if (timeout) {
+      clearTimeout(timeout);
+      this.taskTimeouts.delete(result.id);
+    }
 
     if (callback) {
       this.pendingCallbacks.delete(result.id);
@@ -271,6 +310,8 @@ export class ConcurrentProcessor extends EventEmitter {
       // ワーカーが応答しない場合は再起動
       this.restartWorker(activeTask.worker);
     }
+
+    this.taskTimeouts.delete(taskId);
   }
 
   /**
@@ -317,7 +358,8 @@ export class ConcurrentProcessor extends EventEmitter {
     const now = Date.now();
     
     // 長時間実行中のタスクをチェック
-    for (const [taskId, task] of this.activeTasks) {
+    const activeTaskEntries = Array.from(this.activeTasks.entries());
+    for (const [taskId, task] of activeTaskEntries) {
       if (now - task.startTime > this.config.workerTimeoutMs) {
         console.warn(`Long running task detected: ${taskId}`);
         this.handleTaskTimeout(taskId);
@@ -355,6 +397,13 @@ export class ConcurrentProcessor extends EventEmitter {
   async shutdown(): Promise<void> {
     console.log('Shutting down ConcurrentProcessor...');
     
+    // 全てのタイムアウトをクリア
+    const timeouts = Array.from(this.taskTimeouts.values());
+    for (const timeout of timeouts) {
+      clearTimeout(timeout);
+    }
+    this.taskTimeouts.clear();
+    
     // 全てのワーカーを終了
     const shutdownPromises = Array.from(this.workers.values()).map(worker => 
       worker.terminate()
@@ -371,89 +420,4 @@ export class ConcurrentProcessor extends EventEmitter {
   }
 }
 
-// ワーカーコード（このファイルがワーカーとして実行された場合）
-if (!isMainThread && parentPort) {
-  const { workerId, config } = workerData;
-  
-  parentPort.on('message', async (task: TaskData) => {
-    const startTime = Date.now();
-    
-    try {
-      let result: any;
-      
-      switch (task.type) {
-        case 'search':
-          result = await processSearchTask(task.payload);
-          break;
-        case 'sdk_fetch':
-          result = await processSDKFetchTask(task.payload);
-          break;
-        case 'config_gen':
-          result = await processConfigGenTask(task.payload);
-          break;
-        case 'document_parse':
-          result = await processDocumentParseTask(task.payload);
-          break;
-        default:
-          throw new Error(`Unknown task type: ${task.type}`);
-      }
-      
-      const taskResult: TaskResult = {
-        id: task.id,
-        success: true,
-        data: result,
-        duration: Date.now() - startTime
-      };
-      
-      parentPort!.postMessage(taskResult);
-    } catch (error) {
-      const taskResult: TaskResult = {
-        id: task.id,
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error',
-        duration: Date.now() - startTime
-      };
-      
-      parentPort!.postMessage(taskResult);
-    }
-  });
-}
-
-// ワーカータスク実装
-async function processSearchTask(payload: any): Promise<any> {
-  // 実際の検索処理を実装
-  // この例では簡単なモックを返す
-  await new Promise(resolve => setTimeout(resolve, 100));
-  return {
-    query: payload.query,
-    results: [`Result for ${payload.query}`, `Another result for ${payload.query}`]
-  };
-}
-
-async function processSDKFetchTask(payload: any): Promise<any> {
-  // 実際のSDK取得処理を実装
-  await new Promise(resolve => setTimeout(resolve, 50));
-  return {
-    module: payload.module,
-    version: 'latest',
-    description: `Module ${payload.module} information`
-  };
-}
-
-async function processConfigGenTask(payload: any): Promise<any> {
-  // 設定生成処理を実装
-  await new Promise(resolve => setTimeout(resolve, 200));
-  return {
-    config: `Generated config for ${payload.type}`,
-    valid: true
-  };
-}
-
-async function processDocumentParseTask(payload: any): Promise<any> {
-  // ドキュメント解析処理を実装
-  await new Promise(resolve => setTimeout(resolve, 150));
-  return {
-    parsed: true,
-    content: `Parsed content from ${payload.source}`
-  };
-} 
+ 

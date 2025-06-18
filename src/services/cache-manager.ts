@@ -66,6 +66,10 @@ export class CacheManager {
   private connectionQueue: QueueItem[] = [];
   private cleanupInterval?: NodeJS.Timeout;
   private compressionStats = { compressed: 0, uncompressed: 0, ratio: 0 };
+  
+  // 新規: Race condition対策
+  private isCreatingConnection = false;
+  private connectionCreationMutex = Promise.resolve();
 
   constructor(config: Config) {
     this.config = config.cache;
@@ -178,7 +182,7 @@ export class CacheManager {
   }
 
   /**
-   * 新規: プールからRedis接続を取得（バグ修正版）
+   * 新規: プールからRedis接続を取得（完全修正版）
    */
   private async acquireRedisConnection(): Promise<RedisClientType | null> {
     if (this.redisPool.length === 0) return null;
@@ -191,27 +195,58 @@ export class CacheManager {
       }
     }
     
-    // プールに空きがあれば新しい接続を作成
-    if (this.redisPool.length < this.poolConfig.max) {
-      try {
-        const client = createClient({ url: this.config.redis.url });
-        await client.connect();
-        this.redisPool.push(client as any); // 型互換性のため
-        this.activeConnections++;
-        return client as any;
-      } catch (error) {
-        console.error('Failed to create new Redis connection:', error);
-        return null;
+    // Race condition対策: ミューテックスを使って接続作成を同期化
+    return this.connectionCreationMutex = this.connectionCreationMutex.then(async () => {
+      // 再度利用可能な接続をチェック（他のリクエストが作成した可能性）
+      for (const client of this.redisPool) {
+        if (client.isReady) {
+          this.activeConnections++;
+          return client;
+        }
       }
-    }
-    
-    // 接続待ちのキューに追加（バグ修正版）
+      
+      // プールに空きがあれば新しい接続を作成（Race condition対策済み）
+      if (this.redisPool.length < this.poolConfig.max && !this.isCreatingConnection) {
+        this.isCreatingConnection = true;
+        
+        try {
+          const client = createClient({ url: this.config.redis.url });
+          
+          // エラーハンドリング設定
+          client.on('error', (err) => {
+            console.error('Redis client error:', err);
+            this.removeFromPool(client as any);
+          });
+          
+          await client.connect();
+          this.redisPool.push(client as any);
+          this.activeConnections++;
+          
+          console.debug(`New Redis connection created. Pool size: ${this.redisPool.length}`);
+          return client as any;
+        } catch (error) {
+          console.error('Failed to create new Redis connection:', error);
+          return null;
+        } finally {
+          this.isCreatingConnection = false;
+        }
+      }
+      
+      // 接続待ちのキューに追加（Memory leak対策版）
+      return this.waitForConnection();
+    });
+  }
+
+  /**
+   * 新規: 接続待ちキューの処理（Memory leak対策）
+   */
+  private async waitForConnection(): Promise<RedisClientType | null> {
     return new Promise((resolve, reject) => {
-      // queueItemを先に宣言してから使用
       const queueItem: QueueItem = {
         resolve: (client: RedisClientType | null) => {
           if (!queueItem.isCompleted) {
             queueItem.isCompleted = true;
+            this.cleanupQueueItem(queueItem);
             clearTimeout(timeout);
             resolve(client);
           }
@@ -219,6 +254,7 @@ export class CacheManager {
         reject: (error: Error) => {
           if (!queueItem.isCompleted) {
             queueItem.isCompleted = true;
+            this.cleanupQueueItem(queueItem);
             clearTimeout(timeout);
             reject(error);
           }
@@ -226,31 +262,87 @@ export class CacheManager {
         isCompleted: false
       };
       
+      // タイムアウト処理（Memory leak対策強化）
       const timeout = setTimeout(() => {
         if (!queueItem.isCompleted) {
           queueItem.isCompleted = true;
-          this.connectionQueue = this.connectionQueue.filter(item => item !== queueItem);
-          queueItem.reject(new Error('Redis connection acquisition timeout'));
+          this.cleanupQueueItem(queueItem);
+          reject(new Error('Redis connection acquisition timeout'));
         }
       }, this.poolConfig.acquireTimeoutMs);
       
       this.connectionQueue.push(queueItem);
+      
+      // 定期的なキューのヘルスチェック
+      this.scheduleQueueCleanup();
     });
   }
 
   /**
-   * 新規: Redis接続をプールに返却（改良版）
+   * 新規: キューアイテムのクリーンアップ
+   */
+  private cleanupQueueItem(queueItem: QueueItem): void {
+    const index = this.connectionQueue.indexOf(queueItem);
+    if (index > -1) {
+      this.connectionQueue.splice(index, 1);
+    }
+  }
+
+  /**
+   * 新規: キューの定期クリーンアップをスケジュール
+   */
+  private scheduleQueueCleanup(): void {
+    // 現在のキューサイズが多い場合のみ実行
+    if (this.connectionQueue.length > 10) {
+      setTimeout(() => this.performQueueCleanup(), 1000);
+    }
+  }
+
+  /**
+   * 新規: キューのクリーンアップ実行
+   */
+  private performQueueCleanup(): void {
+    const now = Date.now();
+    const maxAge = this.poolConfig.acquireTimeoutMs * 2; // タイムアウトの2倍の時間
+    
+    this.connectionQueue = this.connectionQueue.filter(item => {
+      if (item.isCompleted) return false;
+      
+      // 古いアイテムを強制的にタイムアウトとする
+      const createdAt = (item as any).createdAt || now;
+      if (now - createdAt > maxAge) {
+        item.isCompleted = true;
+        item.reject(new Error('Queue item expired'));
+        return false;
+      }
+      
+      return true;
+    });
+  }
+
+  /**
+   * 新規: Redis接続をプールに返却（完全修正版）
    */
   private releaseRedisConnection(client: RedisClientType): void {
     this.activeConnections = Math.max(0, this.activeConnections - 1);
     
-    // キューから待機中のリクエストがあれば処理
-    if (this.connectionQueue.length > 0) {
+    // キューから待機中のリクエストがあれば処理（Memory leak対策強化）
+    while (this.connectionQueue.length > 0) {
       const queueItem = this.connectionQueue.shift();
-      if (queueItem && client.isReady && !queueItem.isCompleted) {
+      
+      if (!queueItem || queueItem.isCompleted) {
+        continue; // 完了済みのアイテムはスキップ
+      }
+      
+      if (client.isReady) {
+        queueItem.isCompleted = true;
         this.activeConnections++;
         queueItem.resolve(client);
         return;
+      } else {
+        // 接続が利用できない場合はエラーとして処理
+        queueItem.isCompleted = true;
+        queueItem.reject(new Error('Redis connection not ready'));
       }
     }
   }
@@ -509,7 +601,7 @@ export class CacheManager {
     try {
       const redisKey = `${this.config.redis.key_prefix}${key}`;
       const result = await this.redisClient.get(redisKey);
-      if (result) {
+      if (result && typeof result === 'string') {
         const entry: CacheEntry<T> = JSON.parse(result);
         if (this.isValidEntry(entry)) {
           return entry.data;
@@ -762,13 +854,43 @@ export class CacheManager {
   }
 
   /**
-   * 終了処理
+   * 終了処理（強化版）
    */
   async destroy(): Promise<void> {
     try {
-      if (this.redisClient) {
+      // クリーンアップタスクを停止
+      if (this.cleanupInterval) {
+        clearInterval(this.cleanupInterval);
+        this.cleanupInterval = undefined;
+      }
+      
+      // 待機中のキューをクリア
+      for (const queueItem of this.connectionQueue) {
+        if (!queueItem.isCompleted) {
+          queueItem.isCompleted = true;
+          queueItem.reject(new Error('CacheManager is being destroyed'));
+        }
+      }
+      this.connectionQueue = [];
+      
+      // Redis接続プールを閉じる
+      for (const client of this.redisPool) {
+        try {
+          if (client.isReady) {
+            await client.quit();
+          }
+        } catch (error) {
+          console.warn('Failed to close Redis client:', error);
+        }
+      }
+      this.redisPool = [];
+      
+      // メインのRedis接続を閉じる
+      if (this.redisClient && this.redisClient.isReady) {
         await this.redisClient.quit();
       }
+      this.redisClient = null;
+      
       console.log('CacheManager destroyed');
     } catch (error) {
       console.error('Cache destroy error:', error);
