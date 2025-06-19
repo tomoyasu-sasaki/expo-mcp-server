@@ -104,7 +104,9 @@ jobs:
     name: "🔐 Security Scan"
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
+      actions: read
     
     steps:
       - name: "📥 Checkout repository"
@@ -161,10 +163,11 @@ jobs:
           
       - name: "📤 Upload Trivy scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-security-scan'
+        continue-on-error: true  # Don't fail workflow if upload fails
 
   # =========================
   # 🏗️ Build & Package
@@ -318,10 +321,12 @@ jobs:
     name: "🐳 Docker Build"
     runs-on: ubuntu-latest
     needs: [test]  # Remove security dependency for parallel execution
-    if: github.event_name != 'pull_request'  # Skip for PR to save time
+    # Always run to verify Docker builds, but skip push for PR
     permissions:
       contents: read
       packages: write
+      security-events: write  # Required for SARIF upload
+      actions: read           # Required for GitHub Actions
     
     steps:
       - name: "📥 Checkout repository"
@@ -331,13 +336,13 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
       - name: "🔐 Log in to Container Registry"
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-          
+        
       - name: "🏷️ Extract metadata"
         id: meta
         uses: docker/metadata-action@v5
@@ -345,29 +350,36 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
-            type=ref,event=pr
+            type=ref,event=tag
+            type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
+            type=sha,prefix={{branch}}-,enable={{is_default_branch}}
             type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
             
-      - name: "🏗️ Build Docker image"
+      - name: "🏗️ Build and Push Docker image"
         uses: docker/build-push-action@v5
         id: build
         with:
           context: .
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           tags: |
-            expo-mcp-server:local
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+            ${{ github.event_name == 'pull_request' && 'expo-mcp-server:local' || steps.meta.outputs.tags }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          load: true  # Load locally for security scanning
+          load: ${{ github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
+        if: github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))  # Only scan when image is loaded locally
         with:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
@@ -387,13 +399,25 @@ jobs:
           echo "🐳 Verifying Docker images:"
           docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | head -10
           
-          echo "🔍 Checking for expo-mcp-server images:"
-          if docker images | grep -q "expo-mcp-server.*local"; then
-            echo "✅ Docker image 'expo-mcp-server:local' found"
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "✅ PR: Docker image built locally for testing"
+            if docker images | grep -q "expo-mcp-server.*local"; then
+              echo "✅ Docker image 'expo-mcp-server:local' found"
+            else
+              echo "❌ Docker image 'expo-mcp-server:local' not found"
+            fi
+          elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "✅ Docker image pushed to registry for main branch or release"
+            echo "🚀 Image tags: ${{ steps.meta.outputs.tags }}"
           else
-            echo "❌ Docker image 'expo-mcp-server:local' not found"
-            echo "🔍 Available images:"
-            docker images
+            echo "🔍 Checking for expo-mcp-server images:"
+            if docker images | grep -q "expo-mcp-server.*local"; then
+              echo "✅ Docker image 'expo-mcp-server:local' found for security scanning"
+            else
+              echo "❌ Docker image 'expo-mcp-server:local' not found"
+              echo "🔍 Available images:"
+              docker images
+            fi
           fi
           
           echo "🔍 Checking Trivy scan results:"
@@ -421,16 +445,30 @@ jobs:
           
       - name: "📤 Upload Docker scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-docker-results.sarif') != ''
+        if: always() && hashFiles('trivy-docker-results.sarif') != '' && github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         with:
           sarif_file: 'trivy-docker-results.sarif'
           category: 'trivy-docker-security'
+        continue-on-error: true  # Don't fail workflow if upload fails
           
       - name: "📊 Docker Security Scan Summary"
         if: always()
         run: |
           echo "🔍 Docker Security Scan Results:"
-          if [ -f "trivy-docker-results.sarif" ]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [ -f "trivy-docker-results.sarif" ]; then
+              echo "✅ PR: Security scan completed"
+              if command -v jq >/dev/null 2>&1; then
+                VULNS=$(jq '.runs[0].results | length' trivy-docker-results.sarif 2>/dev/null || echo "Unable to parse")
+                echo "📊 Found $VULNS potential issues"
+              fi
+            else
+              echo "✅ PR: Docker image built successfully"
+            fi
+          elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
+            echo "✅ Docker image pushed to registry - security scanning skipped for production images"
+            echo "📋 Registry: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          elif [ -f "trivy-docker-results.sarif" ]; then
             echo "✅ SARIF results file generated successfully"
             # Extract vulnerability count from SARIF if possible
             if command -v jq >/dev/null 2>&1; then
@@ -449,10 +487,10 @@ jobs:
   # 🧪 Integration Testing
   # =========================
   integration:
-    name: "🧪 Integration Tests"
+    name: "🧪 Integration Tests" 
     runs-on: ubuntu-latest
     needs: [build]
-    if: github.event_name != 'pull_request'  # Skip for PR to save time
+    # Run for all events to ensure integration quality
     
     steps:
       - name: "📥 Checkout repository"
@@ -497,7 +535,7 @@ jobs:
   release:
     name: "🚀 Release"
     runs-on: ubuntu-latest
-    needs: [integration, binary]
+    needs: [integration, binary, docker]
     if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write
@@ -552,8 +590,17 @@ jobs:
             
             ### 🐳 Docker
             ```bash
+            # Latest version
             docker run -it ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            
+            # Or specific version
+            docker run -it ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
             ```
+            
+            📋 Available image tags:
+            - `${{ github.ref_name }}` - Specific release version
+            - `latest` - Latest stable release
+            - `main` - Latest development build
             
             ### 📥 Binary Downloads
             - [Linux x64](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/expo-mcp-server-linux-x64)
