@@ -98,6 +98,14 @@ const SecurityConfigSchema = z.object({
       max_network_requests: z.number().default(50),
     }),
   }),
+  vulnerability_protection: z.object({
+    prompt_injection_detection: z.boolean().default(true),
+    xss_prevention: z.boolean().default(true),
+    path_traversal_protection: z.boolean().default(true),
+    dos_attack_protection: z.boolean().default(true),
+    malicious_snack_detection: z.boolean().default(true),
+    auto_block_on_detection: z.boolean().default(true),
+  }),
 });
 
 const LoggingConfigSchema = z.object({

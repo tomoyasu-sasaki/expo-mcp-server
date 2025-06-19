@@ -19,6 +19,8 @@ import { HttpTransport } from './http-transport.js';
 import { ExpoTools, TOOL_SCHEMAS } from './tools.js';
 import { ExpoResources, RESOURCE_SCHEMAS } from './resources.js';
 import { ExpoPrompts, PROMPT_SCHEMAS } from './prompts.js';
+import { ExpoMCPSecurity, IntegratedSecurityConfig } from '../security/index';
+import { PerformanceMonitor } from '../services/performance-monitor.js';
 
 /**
  * Expo MCP Server
@@ -28,15 +30,25 @@ export class ExpoMcpServer extends EventEmitter {
   private server: Server;
   private transport: StdioServerTransport | null = null;
   private httpTransport: HttpTransport | null = null;
+  private performanceMonitor: PerformanceMonitor;
   private isConnected = false;
   private sessionId: string;
   private config: any;
   private signalHandlersRegistered = false;
+  private security: ExpoMCPSecurity | null = null;
 
   constructor(config: any) {
     super();
     this.config = config;
     this.sessionId = this.generateSessionId();
+    
+    // パフォーマンス監視初期化
+    this.performanceMonitor = new PerformanceMonitor(config);
+    
+    // セキュリティ機能初期化
+    if (config.security) {
+      this.initializeSecurity(config);
+    }
     
     // MCP Server インスタンス作成
     this.server = new Server(
@@ -57,6 +69,57 @@ export class ExpoMcpServer extends EventEmitter {
    */
   private generateSessionId(): string {
     return `expo-mcp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * セキュリティ機能初期化
+   */
+  private initializeSecurity(config: any): void {
+    const securityConfig: IntegratedSecurityConfig = {
+      security: config.security,
+      rateLimit: {
+        requests_per_hour: config.security.access_control.rate_limit_per_session || 2000,
+        session_timeout_minutes: config.security.access_control.session_timeout_minutes || 60,
+        max_concurrent_sessions: 200,
+        ip_whitelist: [],
+        ip_blacklist: [],
+        enable_ip_blocking: true,
+      },
+      permissions: {
+        roles: {
+          anonymous: {
+            permissions: ['tool:execute', 'resource:read', 'prompt:get'],
+            description: 'Default anonymous user permissions',
+          },
+          authenticated: {
+            permissions: ['*'],
+            description: 'Full access for authenticated users',
+          },
+        },
+        default_role: 'anonymous',
+        require_authentication: config.security.access_control.require_authentication || false,
+      },
+      logging: {
+        logViolations: true,
+        logLevel: 'warn',
+      },
+    };
+
+    this.security = new ExpoMCPSecurity(securityConfig);
+
+    // セキュリティイベントハンドリング
+    this.security.on('security:violation', (violation) => {
+      this.emit('security:violation', violation);
+    });
+
+    this.security.on('security:critical', (violation) => {
+      this.emit('security:critical', violation);
+      console.error('[MCP Security] CRITICAL:', violation);
+    });
+
+    this.security.on('rate_limit:exceeded', (data) => {
+      this.emit('rate_limit:exceeded', data);
+    });
   }
 
   /**
@@ -123,25 +186,63 @@ export class ExpoMcpServer extends EventEmitter {
       };
     });
 
-    // Tool call ハンドラー（プレースホルダー）
+    // Tool call ハンドラー（セキュリティチェック統合）
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       console.log(`[Session: ${this.sessionId}] Tool call:`, request.params.name);
+      
+      // セキュリティチェック
+      if (this.security) {
+        const securityResult = await this.security.validateToolCall(
+          this.sessionId,
+          request.params.name,
+          request.params.arguments
+        );
+        
+        if (!securityResult.allowed) {
+          throw new Error(`Security violation: ${securityResult.violations.join(', ')}`);
+        }
+      }
       
       // Phase 3で具体的なツール実装
       return this.executeToolPlaceholder(request.params.name, request.params.arguments);
     });
 
-    // Resource read ハンドラー（プレースホルダー）
+    // Resource read ハンドラー（セキュリティチェック統合）
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
       console.log(`[Session: ${this.sessionId}] Resource read:`, request.params.uri);
+      
+      // セキュリティチェック
+      if (this.security) {
+        const securityResult = await this.security.validateResourceRead(
+          this.sessionId,
+          request.params.uri
+        );
+        
+        if (!securityResult.allowed) {
+          throw new Error(`Security violation: ${securityResult.violations.join(', ')}`);
+        }
+      }
       
       // Phase 3で具体的なリソース実装
       return this.readResourcePlaceholder(request.params.uri);
     });
 
-    // Prompt get ハンドラー（プレースホルダー）
+    // Prompt get ハンドラー（セキュリティチェック統合）
     this.server.setRequestHandler(GetPromptRequestSchema, async (request) => {
       console.log(`[Session: ${this.sessionId}] Prompt get:`, request.params.name);
+      
+      // セキュリティチェック
+      if (this.security) {
+        const securityResult = await this.security.validatePromptGet(
+          this.sessionId,
+          request.params.name,
+          request.params.arguments
+        );
+        
+        if (!securityResult.allowed) {
+          throw new Error(`Security violation: ${securityResult.violations.join(', ')}`);
+        }
+      }
       
       // Phase 3で具体的なプロンプト実装
       return this.getPromptPlaceholder(request.params.name, request.params.arguments);
@@ -327,7 +428,7 @@ export class ExpoMcpServer extends EventEmitter {
    */
   async startHttp(port: number = 3000): Promise<void> {
     try {
-      this.httpTransport = new HttpTransport(port, this.config);
+      this.httpTransport = new HttpTransport(port, this.config, this.performanceMonitor);
       
       console.log(`[Session: ${this.sessionId}] Starting MCP Server with HTTP + SSE transport...`);
       console.log(`[Session: ${this.sessionId}] Port: ${port}`);

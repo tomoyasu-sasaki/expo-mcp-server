@@ -111,6 +111,14 @@
         "max_file_reads": 100,
         "max_network_requests": 50
       }
+    },
+    "vulnerability_protection": {
+      "prompt_injection_detection": true,
+      "xss_prevention": true,
+      "path_traversal_protection": true,
+      "dos_attack_protection": true,
+      "malicious_snack_detection": true,
+      "auto_block_on_detection": true
     }
   },
   "performance": {

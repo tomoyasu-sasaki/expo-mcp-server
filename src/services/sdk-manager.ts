@@ -8,6 +8,8 @@ import {
   ExpoSDKConstant,
   ExpoSDKType
 } from '../types/document';
+import { CacheManager } from './cache-manager.js';
+import { PerformanceMonitor } from './performance-monitor.js';
 
 /**
  * Migration guide for moving between SDK versions

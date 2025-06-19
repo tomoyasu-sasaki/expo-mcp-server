@@ -20,6 +20,12 @@ volumes:
     name: expo-mcp-app-cache
   local_data:
     name: expo-mcp-local-data
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
 
 services:
   # =============================================================================
@@ -47,13 +53,15 @@ services:
     # 環境変数
     environment:
       - NODE_ENV=production
-      - MCP_MODE=stdio
+      - MCP_MODE=http
       - LOG_LEVEL=info
       - LOCAL_STORAGE_PATH=/app/data
       - MAX_STORAGE_SIZE_GB=10
       - REDIS_URL=redis://redis-cache:6379
       - TYPESENSE_URL=http://typesense-search:8108
       - TYPESENSE_API_KEY=xyz
+      - MONITORING_ENABLED=true
+      - METRICS_PORT=9090
     
     # ボリュームマウント
     volumes:
@@ -66,6 +74,7 @@ services:
     # ポート公開（HTTP フォールバック用）
     ports:
       - "3000:3000"
+      - "9090:9090"  # Prometheusメトリクス
     
     # ネットワーク
     networks:
@@ -73,7 +82,7 @@ services:
     
     # ヘルスチェック
     healthcheck:
-      test: ["CMD", "node", "health-check.cjs"]
+      test: ["CMD", "node", "docker/health-check.cjs"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -155,6 +164,7 @@ services:
       - TYPESENSE_DATA_DIR=/data
       - TYPESENSE_API_KEY=xyz
       - TYPESENSE_CORS_DOMAINS=*
+      - TYPESENSE_ENABLE_CORS=true
     
     # ボリュームマウント
     volumes:
@@ -180,4 +190,82 @@ services:
       resources:
         limits:
           memory: 1G
-          cpus: '0.5' 
+          cpus: '0.5'
+    command: '--data-dir /data --api-key=xyz --listen-port 8108 --enable-cors'
+
+  # 新規: Prometheus監視サーバー
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: expo-mcp-prometheus
+    restart: unless-stopped
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alert-rules.yml:/etc/prometheus/alert-rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    networks:
+      - expo-mcp-network
+    depends_on:
+      - expo-mcp-api
+
+  # 新規: Grafana可視化ダッシュボード
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: expo-mcp-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+    networks:
+      - expo-mcp-network
+    depends_on:
+      - prometheus
+
+  # 新規: Alertmanager通知管理
+  alertmanager:
+    image: prom/alertmanager:v0.25.0
+    container_name: expo-mcp-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager_data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:9093'
+    networks:
+      - expo-mcp-network
+
+networks:
+  expo-mcp-network:
+    driver: bridge
+
+volumes:
+  redis_data:
+    driver: local
+  typesense_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local 

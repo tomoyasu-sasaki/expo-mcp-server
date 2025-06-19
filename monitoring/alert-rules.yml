@@ -1,0 +1,146 @@
+groups:
+  - name: expo_mcp_alerts
+    rules:
+      # レスポンス時間アラート
+      - alert: StdioLatencyHigh
+        expr: histogram_quantile(0.95, rate(expo_mcp_stdio_latency_ms_bucket[5m])) > 50
+        for: 2m
+        labels:
+          severity: high
+        annotations:
+          summary: "MCP stdio latency is high"
+          description: "MCP stdio P95 latency is {{ $value }}ms, which exceeds 50ms threshold"
+
+      - alert: SearchLatencyHigh
+        expr: histogram_quantile(0.95, rate(expo_mcp_search_latency_ms_bucket[5m])) > 100
+        for: 3m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Search latency is high"
+          description: "Search P95 latency is {{ $value }}ms, which exceeds 100ms threshold"
+
+      - alert: SdkLookupLatencyHigh
+        expr: histogram_quantile(0.95, rate(expo_mcp_sdk_lookup_latency_ms_bucket[5m])) > 80
+        for: 3m
+        labels:
+          severity: medium
+        annotations:
+          summary: "SDK lookup latency is high"
+          description: "SDK lookup P95 latency is {{ $value }}ms, which exceeds 80ms threshold"
+
+      - alert: ToolExecutionLatencyHigh
+        expr: histogram_quantile(0.95, rate(expo_mcp_tool_execution_latency_ms_bucket[5m])) > 500
+        for: 2m
+        labels:
+          severity: high
+        annotations:
+          summary: "Tool execution latency is high"
+          description: "Tool execution P95 latency is {{ $value }}ms, which exceeds 500ms threshold"
+
+      # システムリソースアラート
+      - alert: MemoryUsageHigh
+        expr: expo_mcp_memory_usage_mb{type="heap_used"} > 1024
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Memory usage is high"
+          description: "Memory usage is {{ $value }}MB, which exceeds 1GB threshold"
+
+      - alert: CpuUsageHigh
+        expr: expo_mcp_cpu_usage_percent > 80
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "CPU usage is high"
+          description: "CPU usage is {{ $value }}%, which exceeds 80% threshold"
+
+      # キャッシュ効率アラート
+      - alert: CacheHitRateLow
+        expr: expo_mcp_cache_hit_rate{cache_type="memory"} < 85
+        for: 10m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Cache hit rate is low"
+          description: "Cache hit rate is {{ $value }}%, which is below 85% threshold"
+
+      # エラー率アラート
+      - alert: ErrorRateHigh
+        expr: expo_mcp_error_rate{time_window="5m"} > 5
+        for: 3m
+        labels:
+          severity: high
+        annotations:
+          summary: "Error rate is high"
+          description: "Error rate is {{ $value }}%, which exceeds 5% threshold"
+
+      # セキュリティアラート
+      - alert: SecurityViolationsHigh
+        expr: rate(expo_mcp_security_violations_total[1h]) > 10
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Security violations detected"
+          description: "Security violations rate is {{ $value }} per hour, which exceeds 10 threshold"
+
+      # MCPプロトコルエラーアラート
+      - alert: McpProtocolErrorsHigh
+        expr: rate(expo_mcp_protocol_errors_total[1h]) > 5
+        for: 3m
+        labels:
+          severity: high
+        annotations:
+          summary: "MCP protocol errors are high"
+          description: "MCP protocol errors rate is {{ $value }} per hour, which exceeds 5 threshold"
+
+      # サービス可用性アラート
+      - alert: ServiceDown
+        expr: up{job="expo-mcp-server"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Expo MCP Server is down"
+          description: "Expo MCP Server has been down for more than 1 minute"
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: high
+        annotations:
+          summary: "Redis is down"
+          description: "Redis has been down for more than 2 minutes"
+
+      - alert: TypesenseDown
+        expr: up{job="typesense"} == 0
+        for: 2m
+        labels:
+          severity: high
+        annotations:
+          summary: "Typesense is down"
+          description: "Typesense has been down for more than 2 minutes"
+
+      # 使用状況アラート
+      - alert: ConcurrentSessionsHigh
+        expr: expo_mcp_concurrent_sessions > 180
+        for: 5m
+        labels:
+          severity: medium
+        annotations:
+          summary: "Concurrent sessions are high"
+          description: "Concurrent sessions count is {{ $value }}, approaching limit of 200"
+
+      # プラットフォーム使用状況異常
+      - alert: PlatformUsageAnomaly
+        expr: rate(expo_mcp_platform_usage_total[1h]) > 1000
+        for: 10m
+        labels:
+          severity: low
+        annotations:
+          summary: "Unusual platform usage detected"
+          description: "Platform usage rate is {{ $value }} per hour, which is unusually high" 

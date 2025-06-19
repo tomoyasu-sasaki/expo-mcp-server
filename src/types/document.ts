@@ -49,6 +49,7 @@ export interface SearchResult {
   totalCount: number;
   facets?: Record<string, Array<{ value: string; count: number }>>;
   searchTime: number;
+  fromCache?: boolean;
 }
 
 export interface RecommendationRequest {
