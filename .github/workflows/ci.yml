@@ -344,6 +344,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
         
       - name: "🏷️ Extract metadata"
+        if: github.event_name != 'pull_request'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -351,7 +352,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
@@ -360,22 +360,37 @@ jobs:
           flavor: |
             latest=false
             
-      - name: "🏗️ Build and Push Docker image"
+      - name: "🏗️ Build Docker image (PR)"
+        if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v5
-        id: build
+        id: build-pr
         with:
           context: .
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          platforms: linux/amd64
+          push: false
+          tags: expo-mcp-server:local
+          labels: |
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          
+      - name: "🏗️ Build and Push Docker image (Production)"
+        if: github.event_name != 'pull_request'
+        uses: docker/build-push-action@v5
+        id: build-prod
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
-          tags: |
-            ${{ github.event_name == 'pull_request' && 'expo-mcp-server:local' || steps.meta.outputs.tags }}
+          tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.description=Expo MCP Server
             org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          load: ${{ github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
@@ -403,21 +418,17 @@ jobs:
             echo "✅ PR: Docker image built locally for testing"
             if docker images | grep -q "expo-mcp-server.*local"; then
               echo "✅ Docker image 'expo-mcp-server:local' found"
+              echo "🔍 Build ID: ${{ steps.build-pr.outputs.imageid || 'N/A' }}"
             else
               echo "❌ Docker image 'expo-mcp-server:local' not found"
             fi
           elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "✅ Docker image pushed to registry for main branch or release"
-            echo "🚀 Image tags: ${{ steps.meta.outputs.tags }}"
+            echo "🚀 Image tags: ${{ steps.meta.outputs.tags || 'N/A' }}"
+            echo "🔍 Build ID: ${{ steps.build-prod.outputs.imageid || 'N/A' }}"
           else
-            echo "🔍 Checking for expo-mcp-server images:"
-            if docker images | grep -q "expo-mcp-server.*local"; then
-              echo "✅ Docker image 'expo-mcp-server:local' found for security scanning"
-            else
-              echo "❌ Docker image 'expo-mcp-server:local' not found"
-              echo "🔍 Available images:"
-              docker images
-            fi
+            echo "🔍 Development branch - local build only"
+            echo "🔍 Build ID: ${{ steps.build-prod.outputs.imageid || 'N/A' }}"
           fi
           
           echo "🔍 Checking Trivy scan results:"
@@ -445,7 +456,7 @@ jobs:
           
       - name: "📤 Upload Docker scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-docker-results.sarif') != '' && github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        if: always() && hashFiles('trivy-docker-results.sarif') != ''
         with:
           sarif_file: 'trivy-docker-results.sarif'
           category: 'trivy-docker-security'
