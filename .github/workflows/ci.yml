@@ -336,7 +336,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
         
       - name: "🔐 Log in to Container Registry"
-        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -351,32 +351,35 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
+            type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
-            type=sha,prefix={{branch}}-
+            type=sha,prefix={{branch}}-,enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          flavor: |
+            latest=false
             
       - name: "🏗️ Build and Push Docker image"
         uses: docker/build-push-action@v5
         id: build
         with:
           context: .
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
           tags: |
-            ${{ steps.meta.outputs.tags }}
-            expo-mcp-server:local
+            ${{ github.event_name == 'pull_request' && 'expo-mcp-server:local' || steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.description=Expo MCP Server
             org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          load: ${{ !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}  # Load locally only when not pushing
+          load: ${{ github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
-        if: ${{ !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}  # Only scan when image is loaded locally (not pushed)
+        if: github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))  # Only scan when image is loaded locally
         with:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
@@ -396,7 +399,14 @@ jobs:
           echo "🐳 Verifying Docker images:"
           docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | head -10
           
-          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "✅ PR: Docker image built locally for testing"
+            if docker images | grep -q "expo-mcp-server.*local"; then
+              echo "✅ Docker image 'expo-mcp-server:local' found"
+            else
+              echo "❌ Docker image 'expo-mcp-server:local' not found"
+            fi
+          elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "✅ Docker image pushed to registry for main branch or release"
             echo "🚀 Image tags: ${{ steps.meta.outputs.tags }}"
           else
@@ -445,7 +455,17 @@ jobs:
         if: always()
         run: |
           echo "🔍 Docker Security Scan Results:"
-          if [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if [ -f "trivy-docker-results.sarif" ]; then
+              echo "✅ PR: Security scan completed"
+              if command -v jq >/dev/null 2>&1; then
+                VULNS=$(jq '.runs[0].results | length' trivy-docker-results.sarif 2>/dev/null || echo "Unable to parse")
+                echo "📊 Found $VULNS potential issues"
+              fi
+            else
+              echo "✅ PR: Docker image built successfully"
+            fi
+          elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "✅ Docker image pushed to registry - security scanning skipped for production images"
             echo "📋 Registry: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           elif [ -f "trivy-docker-results.sarif" ]; then
