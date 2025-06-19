@@ -1,5 +1,6 @@
 # =============================================================================
 # Expo MCP Server - Docker Compose Configuration
+# マルチアーキテクチャ & セキュリティ強化 & 署名検証対応
 # =============================================================================
 
 version: "3.8"
@@ -9,65 +10,112 @@ networks:
   expo-mcp-network:
     driver: bridge
     name: expo-mcp-network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
 
 # ボリューム定義
 volumes:
   redis_data:
     name: expo-mcp-redis-data
+    driver: local
   typesense_data:
     name: expo-mcp-typesense-data
+    driver: local
   app_cache:
     name: expo-mcp-app-cache
+    driver: local
   local_data:
     name: expo-mcp-local-data
+    driver: local
   prometheus_data:
+    name: expo-mcp-prometheus-data
     driver: local
   grafana_data:
+    name: expo-mcp-grafana-data
     driver: local
   alertmanager_data:
+    name: expo-mcp-alertmanager-data
     driver: local
+
+# 共通設定
+x-common-variables: &common-variables
+  TZ: UTC
+  DOCKER_CONTENT_TRUST: 1
+
+x-security-opt: &security-opt
+  security_opt:
+    - no-new-privileges:true
+    - seccomp:unconfined
+  cap_drop:
+    - ALL
+
+x-logging: &logging
+  logging:
+    driver: "json-file"
+    options:
+      max-size: "10m"
+      max-file: "3"
 
 services:
   # =============================================================================
-  # Expo MCP API サーバー
+  # Expo MCP API サーバー - マルチアーキテクチャ対応
   # =============================================================================
   expo-mcp-api:
     build: 
       context: .
       dockerfile: Dockerfile
       target: production
+      platforms:
+        - linux/amd64
+        - linux/arm64
+      cache_from:
+        - expo-mcp-server:cache
+      labels:
+        - "org.opencontainers.image.title=Expo MCP Server"
+        - "org.opencontainers.image.version=1.0.0"
+        - "security.scan=enabled"
+        - "security.signature=required"
+    
+    image: expo-mcp-server:latest
     container_name: expo-mcp-server
+    hostname: expo-mcp-api
     restart: unless-stopped
     
-    # セキュリティ設定
-    security_opt:
-      - no-new-privileges:true
+    # セキュリティ設定強化
+    <<: *security-opt
     read_only: true
-    cap_drop:
-      - ALL
     cap_add:
       - CHOWN
       - SETGID
       - SETUID
+    user: "1001:1001"
     
     # 環境変数
     environment:
-      - NODE_ENV=production
-      - MCP_MODE=http
-      - LOG_LEVEL=info
-      - LOCAL_STORAGE_PATH=/app/data
-      - MAX_STORAGE_SIZE_GB=10
-      - REDIS_URL=redis://redis-cache:6379
-      - TYPESENSE_URL=http://typesense-search:8108
-      - TYPESENSE_API_KEY=xyz
-      - MONITORING_ENABLED=true
-      - METRICS_PORT=9090
+      <<: *common-variables
+      NODE_ENV: production
+      MCP_MODE: http
+      LOG_LEVEL: info
+      LOCAL_STORAGE_PATH: /app/data
+      MAX_STORAGE_SIZE_GB: 10
+      REDIS_URL: redis://redis-cache:6379
+      TYPESENSE_URL: http://typesense-search:8108
+      TYPESENSE_API_KEY: xyz
+      MONITORING_ENABLED: true
+      METRICS_PORT: 9090
+      # セキュリティ設定
+      SECURITY_ENABLED: true
+      RATE_LIMIT_ENABLED: true
+      INPUT_VALIDATION_STRICT: true
+      AUDIT_LOGGING_ENABLED: true
     
     # ボリュームマウント
     volumes:
-      - ./data:/app/data:rw
-      - app_cache:/app/cache:rw
-      - local_data:/app/logs:rw
+      - ./data:/app/data:rw,nodev,nosuid
+      - app_cache:/app/cache:rw,nodev,nosuid
+      - local_data:/app/logs:rw,nodev,nosuid
       # 読み取り専用ファイルシステムのため、tmpディレクトリを作成
       - /tmp
     
@@ -88,10 +136,12 @@ services:
       retries: 3
       start_period: 40s
     
-    # 依存関係 (開発時は基本的な依存のみ)
+    # 依存関係
     depends_on:
-      - redis-cache
-      - typesense-search
+      redis-cache:
+        condition: service_healthy
+      typesense-search:
+        condition: service_started
     
     # リソース制限
     deploy:
@@ -102,6 +152,9 @@ services:
         reservations:
           memory: 256M
           cpus: '0.1'
+    
+    # ログ設定
+    <<: *logging
 
   # =============================================================================
   # Redis キャッシュサーバー

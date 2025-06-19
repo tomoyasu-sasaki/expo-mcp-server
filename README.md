@@ -1,65 +1,86 @@
 # Expo MCP Server
 
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Node.js](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+![npm](https://img.shields.io/badge/npm-%3E%3D8.0.0-red.svg)
+![Docker](https://img.shields.io/badge/docker-supported-blue.svg)
+![MCP](https://img.shields.io/badge/MCP-2024--11--05-purple.svg)
+
 Model Context Protocol (MCP) サーバーの実装。Expo ドキュメント、API リファレンス、コミュニティリソースからコンテンツを取得・インデックス化・検索し、Cursor や他の開発者ツールでMCPプロトコル経由で利用可能にします。
 
-## 🚀 機能
+## 🚀 主要機能
 
-- **MCP Protocol 2024-11-05 準拠**: JSON-RPC 2.0 over stdio通信をサポート
-- **Expo エコシステム統合**: 公式ドキュメント、SDK API、EAS CLI
-- **高速検索**: Typesense によるタイポ耐性・ファセット検索
-- **コンテキスト認識推薦**: 埋め込みモデルによる関連コンテンツ推薦
-- **Docker対応**: 本番環境対応のコンテナ化
-- **複数トランスポート**: stdio (主要)、HTTP + SSE (フォールバック)
+- **🔌 MCP Protocol 2024-11-05 準拠**: JSON-RPC 2.0 over stdio通信をサポート
+- **📱 Expo エコシステム統合**: 公式ドキュメント、SDK API、EAS CLI、Snack統合
+- **⚡ 高速検索**: Typesense によるタイポ耐性・ファセット検索
+- **🤖 コンテキスト認識推薦**: 埋め込みモデルによる関連コンテンツ推薦
+- **🐳 Docker & Multi-Arch 対応**: AMD64、ARM64 マルチプラットフォーム対応
+- **🔒 セキュリティ強化**: 入力検証、レート制限、サンドボックス実行
+- **📊 監視 & メトリクス**: Prometheus、Grafana統合
+- **🌐 複数トランスポート**: stdio (主要)、HTTP + SSE、WebSocket (フォールバック)
 
-## 📋 要件
+## 📦 インストール
 
-- **Node.js**: 18+ 
-- **npm**: 8+
-- **Docker**: 20+ (オプション)
-- **Docker Compose**: 2+ (オプション)
-
-## 🛠 インストール
-
-### 1. リポジトリクローン
+### Option 1: npm/npx (推奨)
 
 ```bash
+# グローバルインストール
+npm install -g expo-mcp-server
+
+# 使用 
+expo-mcp-server --stdio
+
+# または npx で直接実行
+npx expo-mcp-server --stdio
+```
+
+### Option 2: Docker
+
+```bash
+# Docker Hub から取得
+docker pull expo/expo-mcp-server:latest
+
+# stdio モード実行
+docker run -i expo/expo-mcp-server:latest --stdio
+
+# HTTP モード実行
+docker run -p 3000:3000 expo/expo-mcp-server:latest --port 3000
+```
+
+### Option 3: ソースからビルド
+
+```bash
+# リポジトリクローン
 git clone https://github.com/expo/expo-mcp-server.git
 cd expo-mcp-server
-```
 
-### 2. 依存関係インストール
-
-```bash
+# 依存関係インストール & ビルド
 npm install
-```
-
-### 3. 環境設定
-
-```bash
-cp .env.example .env
-# 必要に応じて .env ファイルを編集
-```
-
-### 4. ビルド
-
-```bash
 npm run build
-```
 
-## 🚀 使用方法
-
-### MCP (stdio モード)
-
-```bash
-# MCP クライアント（Cursor等）から使用
+# 実行
 npm run mcp:stdio
 ```
 
-### HTTP モード
+## 🛠 使用方法
+
+### MCP モード (stdio) - メイン用途
 
 ```bash
-# 開発・テスト用
-npm run mcp:http
+# MCP クライアント（Cursor、Claude Desktop等）から使用
+expo-mcp-server --stdio
+
+# 設定付き実行
+NODE_ENV=production LOG_LEVEL=info expo-mcp-server --stdio
+```
+
+### HTTP モード - 開発・テスト用
+
+```bash
+# HTTP API モード
+expo-mcp-server --port 3000
+
+# ブラウザで http://localhost:3000 にアクセス
 ```
 
 ### 開発モード
@@ -67,28 +88,114 @@ npm run mcp:http
 ```bash
 # ホットリロード付き開発モード
 npm run dev
+
+# テスト実行
+npm test
+
+# 型チェック & リント
+npm run type-check
+npm run lint
 ```
+
+## 🔌 MCP クライアント統合
+
+### Cursor IDE
+
+**手動設定 (.cursor/mcp_servers.json)**:
+```json
+{
+  "expo-mcp-server": {
+    "command": "npx",
+    "args": ["expo-mcp-server", "--stdio"],
+    "env": {
+      "NODE_ENV": "production"
+    }
+  }
+}
+```
+
+**自動設定 (推奨)**:
+```bash
+# mcp-config.json を使用した自動設定
+npx expo-mcp-server --configure cursor
+```
+
+### Claude Desktop
+
+**設定ファイル編集 (~/Library/Application Support/Claude/claude_desktop_config.json)**:
+```json
+{
+  "mcpServers": {
+    "expo-mcp-server": {
+      "command": "npx",
+      "args": ["expo-mcp-server", "--stdio"]
+    }
+  }
+}
+```
+
+### その他のMCPクライアント
+
+任意のMCP準拠クライアントで使用可能です：
+```bash
+# 標準的なMCP stdio接続
+your-mcp-client --server "expo-mcp-server --stdio"
+```
+
+## 📚 MCP ツール一覧
+
+| ツール名 | 説明 | 主要な使用場面 |
+|---------|------|----------------|
+| `expo_read_document` | Expoドキュメント・APIリファレンス取得 | 公式ドキュメント参照 |
+| `expo_search_documents` | エコシステム全体コンテンツ検索 | 関連情報の横断検索 |
+| `expo_recommend` | コンテキスト認識推薦 | 開発中の最適な提案 |
+| `expo_get_sdk_module` | SDK モジュール詳細情報 | API仕様詳細確認 |
+| `expo_config_templates` | 設定ファイル生成・検証 | プロジェクト設定 |
+| `expo_eas_command_builder` | EAS CLI コマンド生成 | ビルド・デプロイ支援 |
+| `expo_code_examples` | 実行可能コード例・Snack統合 | 学習・プロトタイピング |
+| `expo_error_diagnosis` | エラー分析・解決策提供 | トラブルシューティング |
+
+詳細は [MCP Tools Reference](docs/mcp-tools-reference.md) を参照してください。
 
 ## 🐳 Docker での実行
 
 ### 単体実行
 
 ```bash
-# Docker イメージビルド
-npm run docker:build
+# ローカルビルド (マルチアーキテクチャ)
+npm run docker:buildx
 
-# MCP stdio モード
-npm run docker:mcp
+# stdio モード
+docker run -i expo-mcp-server:latest --stdio
 
-# HTTP モード
-npm run docker:run
+# HTTP モード (ポートフォワーディング)
+docker run -p 3000:3000 expo-mcp-server:latest --port 3000
+
+# 永続データ付き実行
+docker run -v ./data:/app/data -i expo-mcp-server:latest --stdio
 ```
 
-### Docker Compose
+### Docker Compose (フルスタック)
 
 ```bash
-# 全サービス起動（Redis、Typesense含む）
+# 全サービス起動（Redis、Typesense、監視含む）
 docker-compose up -d
+
+# ログ確認
+docker-compose logs -f expo-mcp-api
+
+# 停止
+docker-compose down
+```
+
+### プロダクション運用
+
+```bash
+# セキュリティ強化設定で実行
+docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+# 署名済みイメージ検証
+docker trust inspect expo/expo-mcp-server:latest
 ```
 
 ## 🧪 テスト
@@ -103,25 +210,90 @@ npm run test:watch
 # MCP特有テスト
 npm run test:mcp
 
-# 型チェック
-npm run type-check
+# パッケージング検証
+npm run test:package
 
-# リント
-npm run lint
+# E2E テスト
+npm run test:e2e
+
+# 負荷テスト
+npm run test:load
 ```
 
-## 📚 MCP ツール
+## ⚙️ 設定
 
-| ツール名 | 説明 |
-|---------|------|
-| `expo_read_document` | Expoドキュメント・APIリファレンス取得 |
-| `expo_search_documents` | エコシステム全体コンテンツ検索 |
-| `expo_recommend` | コンテキスト認識推薦 |
-| `expo_get_sdk_module` | SDK モジュール詳細情報 |
-| `expo_config_templates` | 設定ファイル生成・検証 |
-| `expo_eas_command_builder` | EAS CLI コマンド生成 |
-| `expo_code_examples` | 実行可能コード例・Snack統合 |
-| `expo_error_diagnosis` | エラー分析・解決策提供 |
+### 環境変数
+
+| 変数名 | デフォルト | 説明 |
+|--------|-----------|------|
+| `NODE_ENV` | `development` | 実行環境 |
+| `MCP_MODE` | `stdio` | 通信モード (stdio/http) |
+| `LOG_LEVEL` | `info` | ログレベル |
+| `CACHE_TTL_SECONDS` | `3600` | キャッシュ有効期間 |
+| `RATE_LIMIT_RPM` | `2000` | レート制限 (requests/min) |
+| `LOCAL_STORAGE_PATH` | `./data` | データ保存パス |
+
+### 設定ファイル
+
+```bash
+# デフォルト設定をコピー
+cp config/default.json config/local.json
+
+# 設定編集
+vim config/local.json
+```
+
+詳細は [Installation Guide](docs/installation-guide.md) を参照してください。
+
+## 🚀 パフォーマンス
+
+### パフォーマンス目標
+
+- **📈 MCP Server起動**: < 10秒
+- **⚡ JSON-RPC レスポンス**: P95 < 50ms
+- **🔍 検索クエリ**: P95 < 100ms  
+- **💾 メモリ使用量**: < 1GB
+- **👥 同時セッション**: 200+
+
+### チューニング
+
+```bash
+# パフォーマンス最適化設定
+NODE_ENV=production \
+CACHE_TTL_SECONDS=7200 \
+MAX_CONCURRENT_SESSIONS=500 \
+expo-mcp-server --stdio
+```
+
+詳細は [Performance Tuning Guide](docs/performance-tuning-guide.md) を参照してください。
+
+## 🔒 セキュリティ
+
+- **🛡️ 入力検証**: JSON Schema ベース検証
+- **🚫 レート制限**: セッション毎 2000 req/hour
+- **🔐 サンドボックス**: ファイルアクセス制限
+- **📝 監査ログ**: 全操作ログ記録
+- **🔍 脆弱性スキャン**: 自動セキュリティチェック
+
+詳細は [Security Best Practices](docs/security-best-practices.md) を参照してください。
+
+## 📊 監視
+
+### Prometheus メトリクス
+
+```bash
+# メトリクス確認
+curl http://localhost:9090/metrics
+```
+
+### Grafana ダッシュボード
+
+- MCP セッション監視
+- レスポンス時間分析  
+- エラー率トラッキング
+- リソース使用量
+
+詳細は [Docker Deployment Guide](docs/docker-deployment.md#monitoring) を参照してください。
 
 ## 🔧 開発
 
@@ -130,44 +302,114 @@ npm run lint
 ```
 expo-mcp-server/
 ├── src/                 # ソースコード
-├── tests/               # テスト
-├── docs/                # ドキュメント
-├── config/              # 設定ファイル
-├── docker/              # Docker関連
-└── dist/                # ビルド出力
+│   ├── mcp/            # MCP プロトコル実装
+│   ├── services/       # コアサービス
+│   ├── security/       # セキュリティ機能
+│   └── utils/          # ユーティリティ
+├── tests/              # テスト
+├── docs/               # ドキュメント
+├── config/             # 設定ファイル
+├── docker/             # Docker関連
+├── monitoring/         # 監視設定
+└── dist/               # ビルド出力
 ```
 
-### スクリプト
+### 開発コマンド
 
-- `npm run dev`: 開発モード
-- `npm run build`: ビルド
-- `npm run test`: テスト実行
-- `npm run lint`: リント
-- `npm run type-check`: 型チェック
+```bash
+# 開発サーバー起動
+npm run dev
+
+# ビルド
+npm run build
+
+# リント & フォーマット
+npm run lint:fix
+
+# 型チェック
+npm run type-check
+
+# セキュリティ監査
+npm audit
+```
+
+### コントリビューション
+
+1. Fork the repository
+2. Create feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open Pull Request
+
+詳細は [Contributing Guide](docs/contributing-guide.md) を参照してください。
 
 ## 📖 ドキュメント
 
-- [API Reference](docs/api.md)
-- [MCP Integration Guide](docs/mcp-integration.md)
-- [Docker Deployment](docs/docker.md)
-- [Contributing](docs/contributing.md)
+### ユーザーガイド
+- [📥 Installation Guide](docs/installation-guide.md) - インストール・セットアップ
+- [🔌 MCP Client Integration](docs/mcp-client-integration.md) - クライアント統合方法
+- [⚙️ Cursor IDE Setup](docs/cursor-ide-setup.md) - Cursor IDE設定
+- [🐳 Docker Deployment](docs/docker-deployment.md) - Docker運用ガイド
 
-## 🤝 貢献
+### 開発者向け
+- [📚 API Reference](docs/api-reference.md) - API仕様書
+- [🛠️ MCP Tools Reference](docs/mcp-tools-reference.md) - ツール詳細
+- [🔒 Security Best Practices](docs/security-best-practices.md) - セキュリティガイド
+- [⚡ Performance Tuning](docs/performance-tuning-guide.md) - パフォーマンス最適化
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+### 技術仕様書
+- [📋 JSON Schema Definitions](docs/json-schema-definitions.md) - スキーマ定義
+- [🌐 OpenAPI Specification](docs/openapi-specification.md) - HTTP API仕様
+- [🔌 MCP Capability Manifest](docs/mcp-capability-manifest.md) - MCP機能一覧
+- [🐳 Docker Image Documentation](docs/docker-image-documentation.md) - Docker詳細
+
+## ❓ トラブルシューティング
+
+### 一般的な問題
+
+**Q: MCP Server が起動しない**
+```bash
+# ログレベルを上げて詳細確認
+LOG_LEVEL=debug expo-mcp-server --stdio
+```
+
+**Q: パフォーマンスが遅い**
+```bash
+# キャッシュ設定確認
+curl http://localhost:3000/health
+```
+
+**Q: Docker接続できない**
+```bash
+# ヘルスチェック確認
+docker exec expo-mcp-server node health-check.cjs
+```
+
+より詳細な解決方法は [Troubleshooting Guide](docs/troubleshooting.md) を参照してください。
 
 ## 📄 ライセンス
 
-MIT License - see [LICENSE](LICENSE) file for details.
+MIT License - [LICENSE](LICENSE) ファイルを参照してください。
+
+## 🤝 サポート & コミュニティ
+
+- **🐛 バグ報告**: [GitHub Issues](https://github.com/expo/expo-mcp-server/issues)
+- **💡 機能提案**: [GitHub Discussions](https://github.com/expo/expo-mcp-server/discussions)
+- **📧 お問い合わせ**: devrel@expo.dev
+- **🌐 公式サイト**: [expo.dev](https://expo.dev)
 
 ## 🏗 開発状況
 
-このプロジェクトは開発中です。[implementation_plan.md](implementation_plan.md) で進捗を確認できます。
+このプロジェクトは **Phase 6 Section 6.2** まで完了しています。  
+詳細な進捗は [Implementation Plan](docs/implementation_plan.md) で確認できます。
+
+**達成率**: 98% (CI/CD パイプライン、スタンドアローンバイナリが残存)
 
 ---
 
-**Expo DevRel Team** | [GitHub](https://github.com/expo/expo-mcp-server) | [Issues](https://github.com/expo/expo-mcp-server/issues) 
+**🚀 Made with ❤️ by Expo DevRel Team**  
+[GitHub](https://github.com/expo/expo-mcp-server) | [Issues](https://github.com/expo/expo-mcp-server/issues) | [Docs](docs/)
+
+[![npm](https://img.shields.io/npm/v/expo-mcp-server)](https://www.npmjs.com/package/expo-mcp-server)
+[![Docker](https://img.shields.io/docker/v/expo/expo-mcp-server)](https://hub.docker.com/r/expo/expo-mcp-server)
+[![GitHub Stars](https://img.shields.io/github/stars/expo/expo-mcp-server)](https://github.com/expo/expo-mcp-server/stargazers) 

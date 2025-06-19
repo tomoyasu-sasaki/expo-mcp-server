@@ -386,9 +386,84 @@ describe('ConfigManager', () => {
     test('should apply configuration in correct priority order: default < env-specific < env vars < CLI', () => {
       // Create configuration files
       const defaultConfig = {
-        mcp: { http: { port: 3000 } },
-        cache: { memory: { max_size_mb: 200 } },
-        logging: { level: 'info' }
+        server: { name: 'test-server', version: '1.0.0' },
+        mcp: {
+          protocol_version: '2024-11-05',
+          default_transport: 'stdio',
+          stdio: { encoding: 'utf-8', timeout_ms: 5000 },
+          http: { port: 3000, host: '0.0.0.0' }
+        },
+        storage: { 
+          local: { 
+            path: './data', 
+            max_size_gb: 10,
+            backup: { enabled: true, rotation_days: 7, max_files: 10 }
+          }
+        },
+        cache: {
+          memory: { max_size_mb: 200, ttl_seconds: 300 },
+          redis: { url: 'redis://localhost:6379', ttl_seconds: 3600 },
+          disk: { path: './cache', ttl_days: 7, max_size_gb: 5 }
+        },
+        security: {
+          input_validation: { max_tool_args_size_bytes: 2048, prevent_code_injection: true },
+          access_control: { rate_limit_per_session: 2000, session_timeout_minutes: 30, require_authentication: false },
+          tool_execution: { 
+            sandboxing_enabled: true,
+            resource_limits: {
+              max_memory_mb: 512,
+              max_cpu_time_ms: 10000,
+              max_file_reads: 100,
+              max_network_requests: 50
+            }
+          },
+          vulnerability_protection: {
+            xss_prevention: true,
+            sql_injection_prevention: true,
+            command_injection_prevention: true
+          }
+        },
+        logging: { 
+          level: 'info', 
+          format: 'json',
+          file: {
+            enabled: true,
+            path: './logs',
+            rotation: { enabled: true, max_files: 10, max_size_mb: 100 }
+          }
+        },
+        external_services: {
+          expo: { 
+            api_base: 'https://api.expo.dev',
+            timeout_ms: 5000,
+            retry_attempts: 3,
+            rate_limit: { requests_per_minute: 100, burst: 20 }
+          },
+          typesense: { url: 'http://localhost:8108', api_key: 'test', timeout_ms: 3000 },
+          github: { 
+            base_url: 'https://api.github.com',
+            timeout_ms: 5000,
+            rate_limit: { requests_per_hour: 5000 }
+          }
+        },
+        performance: {
+          targets: { 
+            concurrent_sessions: 200,
+            p95_stdio_latency_ms: 100,
+            p95_search_latency_ms: 200,
+            p95_sdk_lookup_ms: 150,
+            cache_hit_target_percent: 80
+          },
+          monitoring: { enabled: true }
+        },
+        features: {
+          tools: {
+            expo_read_document: { enabled: true, timeout_ms: 3000 },
+            expo_search_documents: { enabled: true, timeout_ms: 3000 }
+          },
+          search: { typo_tolerance: true, synonyms_enabled: true, faceted_search: true },
+          recommendations: { max_results: 10, similarity_threshold: 0.7, context_window: 1000 }
+        }
       };
 
       const devConfig = {
