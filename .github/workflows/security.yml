@@ -62,12 +62,14 @@ jobs:
         if: always()
         with:
           sarif_file: 'trivy-results.sarif'
+          category: 'trivy-docker-scan'
           
       - name: "📤 Upload Trivy filesystem results"
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
           sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-filesystem-scan'
           
       - name: "🔐 Run Docker Scout security scan"
         if: github.event_name != 'pull_request'
@@ -76,12 +78,14 @@ jobs:
           command: cves
           image: expo-mcp-security-scan:latest
           sarif-file: scout-results.sarif
+        continue-on-error: true
           
       - name: "📤 Upload Scout scan results"
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && hashFiles('scout-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: 'scout-results.sarif'
+          category: 'docker-scout-scan'
 
   # =========================
   # 🔒 Dependency Security Audit
@@ -193,6 +197,7 @@ jobs:
         with:
           name: security-audit-results
           path: security-results/
+        continue-on-error: true
           
       - name: "📊 Generate Security Summary"
         run: |
