@@ -104,7 +104,9 @@ jobs:
     name: "🔐 Security Scan"
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       security-events: write
+      actions: read
     
     steps:
       - name: "📥 Checkout repository"
@@ -161,10 +163,11 @@ jobs:
           
       - name: "📤 Upload Trivy scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always()
+        if: always() && hashFiles('trivy-results.sarif') != ''
         with:
           sarif_file: 'trivy-results.sarif'
           category: 'trivy-security-scan'
+        continue-on-error: true  # Don't fail workflow if upload fails
 
   # =========================
   # 🏗️ Build & Package
@@ -322,6 +325,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      security-events: write  # Required for SARIF upload
+      actions: read           # Required for GitHub Actions
     
     steps:
       - name: "📥 Checkout repository"
@@ -329,27 +334,6 @@ jobs:
         
       - name: "🏗️ Set up Docker Buildx"
         uses: docker/setup-buildx-action@v3
-        
-      - name: "🔐 Log in to Container Registry"
-        if: github.event_name != 'pull_request'
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-          
-      - name: "🏷️ Extract metadata"
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest,enable={{is_default_branch}}
             
       - name: "🏗️ Build Docker image"
         uses: docker/build-push-action@v5
@@ -357,11 +341,12 @@ jobs:
         with:
           context: .
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: false  # Only build locally to avoid authentication issues
           tags: |
             expo-mcp-server:local
-            ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true  # Load locally for security scanning
@@ -421,10 +406,11 @@ jobs:
           
       - name: "📤 Upload Docker scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-docker-results.sarif') != ''
+        if: always() && hashFiles('trivy-docker-results.sarif') != '' && github.event_name != 'pull_request'
         with:
           sarif_file: 'trivy-docker-results.sarif'
           category: 'trivy-docker-security'
+        continue-on-error: true  # Don't fail workflow if upload fails
           
       - name: "📊 Docker Security Scan Summary"
         if: always()
