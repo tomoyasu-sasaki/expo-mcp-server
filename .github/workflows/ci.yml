@@ -376,14 +376,30 @@ jobs:
           cache-to: type=gha,mode=max
           load: true
           
+      - name: "🏗️ Build Docker image for Development Branch"
+        if: github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/build-push-action@v5
+        id: build-dev
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          tags: expo-mcp-server:local
+          labels: |
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          
       - name: "🏗️ Build and Push Docker image (Production)"
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
         uses: docker/build-push-action@v5
         id: build-prod
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
@@ -394,7 +410,7 @@ jobs:
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
-        if: github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))  # Only scan when image is loaded locally
+        if: github.event_name == 'pull_request' || (github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')))  # Only scan when expo-mcp-server:local image is available
         with:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
@@ -427,8 +443,13 @@ jobs:
             echo "🚀 Image tags: ${{ steps.meta.outputs.tags || 'N/A' }}"
             echo "🔍 Build ID: ${{ steps.build-prod.outputs.imageid || 'N/A' }}"
           else
-            echo "🔍 Development branch - local build only"
-            echo "🔍 Build ID: ${{ steps.build-prod.outputs.imageid || 'N/A' }}"
+            echo "✅ Development branch - Docker image built locally for scanning"
+            if docker images | grep -q "expo-mcp-server.*local"; then
+              echo "✅ Docker image 'expo-mcp-server:local' found"
+              echo "🔍 Build ID: ${{ steps.build-dev.outputs.imageid || 'N/A' }}"
+            else
+              echo "❌ Docker image 'expo-mcp-server:local' not found"
+            fi
           fi
           
           echo "🔍 Checking Trivy scan results:"
@@ -480,14 +501,14 @@ jobs:
             echo "✅ Docker image pushed to registry - security scanning skipped for production images"
             echo "📋 Registry: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           elif [ -f "trivy-docker-results.sarif" ]; then
-            echo "✅ SARIF results file generated successfully"
+            echo "✅ Development branch: Security scan completed"
             # Extract vulnerability count from SARIF if possible
             if command -v jq >/dev/null 2>&1; then
               VULNS=$(jq '.runs[0].results | length' trivy-docker-results.sarif 2>/dev/null || echo "Unable to parse")
-              echo "📊 Found $VULNS potential issues"
+              echo "📊 Found $VULNS potential issues in development branch"
             fi
           else
-            echo "⚠️ SARIF results file not generated"
+            echo "⚠️ Development branch: SARIF results file not generated"
             echo "🔍 Checking available files:"
             ls -la *.sarif 2>/dev/null || echo "No SARIF files found"
             echo "🐳 Available Docker images:"
