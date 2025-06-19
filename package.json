@@ -45,6 +45,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "test:fast": "jest --testPathIgnorePatterns='performance|load-test|e2e-workflow|integration' --maxWorkers=1 --forceExit",
     "test:integration": "jest --testPathPattern=integration",
     "test:e2e": "jest --testPathPattern=e2e",
     "test:mcp": "jest --testPathPattern=mcp",

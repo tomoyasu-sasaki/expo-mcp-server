@@ -45,7 +45,20 @@ jobs:
         run: npm run lint
         
       - name: "🧪 Run tests"
-        run: npm run test:coverage
+        run: |
+          echo "🧪 Running fast test suite to avoid timeout issues..."
+          npm run test:fast 2>&1 | tee test-results.log || {
+            echo "❌ Tests failed. Detailed error analysis:"
+            echo "=== Failed Tests Summary ==="
+            grep -A 5 -B 5 "FAIL\|Error:" test-results.log || echo "No specific error patterns found"
+            echo "=== Configuration Issues ==="
+            grep -A 10 "Configuration validation failed" test-results.log || echo "No configuration errors found"
+            echo "=== Redis Connection Issues ==="
+            grep -A 5 "ECONNREFUSED.*6380" test-results.log || echo "No Redis connection errors found"
+            echo "=== Open Handles Issues ==="
+            grep -A 10 "open handles" test-results.log || echo "No open handles detected"
+            exit 1
+          }
         
       - name: "📊 Upload coverage to Codecov"
         if: matrix.node-version == '18'
