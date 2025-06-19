@@ -78,8 +78,28 @@ jobs:
         run: npm ci
         
       - name: "🔍 NPM Audit"
-        run: npm audit --audit-level=moderate
-        continue-on-error: true
+        run: |
+          echo "🔍 Running NPM Security Audit..."
+          npm audit --audit-level=high --json > npm-audit-results.json || AUDIT_EXIT_CODE=$?
+          
+          if [ -s npm-audit-results.json ]; then
+            echo "📊 Audit Results Summary:"
+            cat npm-audit-results.json | jq -r '.metadata.vulnerabilities | "Critical: \(.critical), High: \(.high), Moderate: \(.moderate), Low: \(.low)"'
+            
+            # Check for critical/high vulnerabilities only
+            CRITICAL_HIGH=$(cat npm-audit-results.json | jq -r '.metadata.vulnerabilities.critical + .metadata.vulnerabilities.high')
+            if [ "$CRITICAL_HIGH" -gt 0 ]; then
+              echo "❌ Critical or High severity vulnerabilities found!"
+              npm audit --audit-level=high
+              exit 1
+            else
+              echo "✅ No critical or high severity vulnerabilities found"
+              echo "ℹ️ Moderate vulnerabilities are documented and acceptable"
+            fi
+          else
+            echo "✅ No vulnerabilities found"
+          fi
+        continue-on-error: false
         
       - name: "🔒 CodeQL Analysis"
         uses: github/codeql-action/init@v3
