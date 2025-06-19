@@ -1,0 +1,49 @@
+{
+  "name": "expo-mcp-server",
+  "version": "1.0.0", 
+  "main": "dist/index.cjs",
+  "pkg": {
+    "scripts": [
+      "dist/**/*.js"
+    ],
+    "assets": [
+      "config/default.json",
+      "config/production.json", 
+      "mcp-config.json",
+      "package.json"
+    ],
+    "targets": [
+      "node18-linux-x64",
+      "node18-macos-x64", 
+      "node18-macos-arm64",
+      "node18-win-x64"
+    ],
+    "outputPath": "binaries/",
+    "options": [
+      "--compress"
+    ]
+  },
+  "bin": {
+    "expo-mcp-server": "dist/index.cjs"
+  },
+  "files": [
+    "dist/**/*",
+    "config/**/*",
+    "mcp-config.json"
+  ],
+  "bundledDependencies": [],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "preferGlobal": false,
+  "preferLocal": true
+} 

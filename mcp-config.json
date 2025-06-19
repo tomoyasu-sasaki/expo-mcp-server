@@ -22,93 +22,30 @@
     }
   },
   "capabilities": {
-    "tools": [
-      {
-        "name": "expo_read_document",
-        "description": "Expoドキュメント、APIリファレンス、ガイドを取得",
-        "enabled": true
-      },
-      {
-        "name": "expo_search_documents",
-        "description": "Expoエコシステム全体でコンテンツ検索",
-        "enabled": true
-      },
-      {
-        "name": "expo_recommend",
-        "description": "現在のコンテキストに基づく関連コンテンツ推薦",
-        "enabled": true
-      },
-      {
-        "name": "expo_get_sdk_module",
-        "description": "Expo SDK モジュールの詳細情報を取得",
-        "enabled": true
-      },
-      {
-        "name": "expo_config_templates",
-        "description": "Expo設定ファイルの生成と検証",
-        "enabled": true
-      },
-      {
-        "name": "expo_eas_command_builder",
-        "description": "EAS CLI コマンドをコンテキストに基づいて生成",
-        "enabled": true
-      },
-      {
-        "name": "expo_code_examples",
-        "description": "実行可能なコード例とSnack統合を提供",
-        "enabled": true
-      },
-      {
-        "name": "expo_error_diagnosis",
-        "description": "一般的なExpoエラーの分析と解決策提供",
-        "enabled": true
-      }
-    ],
-    "resources": [
-      {
-        "uri_template": "expo://docs/{path}",
-        "name": "Expo Documentation",
-        "mime_type": "text/markdown"
-      },
-      {
-        "uri_template": "expo://api/{module}",
-        "name": "Expo SDK API Reference",
-        "mime_type": "text/markdown"
-      },
-      {
-        "uri_template": "expo://examples/{category}",
-        "name": "Code Examples",
-        "mime_type": "application/json"
-      },
-      {
-        "uri_template": "expo://config/{type}",
-        "name": "Configuration Templates",
-        "mime_type": "application/json"
-      },
-      {
-        "uri_template": "expo://eas/{command}",
-        "name": "EAS Commands",
-        "mime_type": "text/plain"
-      }
-    ],
-    "prompts": [
-      {
-        "name": "expo_setup_helper",
-        "description": "Expoプロジェクトセットアップ支援プロンプト"
-      },
-      {
-        "name": "expo_error_helper",
-        "description": "Expoエラー解決支援プロンプト"
-      },
-      {
-        "name": "expo_api_helper",
-        "description": "Expo API使用支援プロンプト"
-      },
-      {
-        "name": "expo_config_analyzer",
-        "description": "Expo設定分析・最適化提案プロンプト"
-      }
-    ]
+    "tools": {
+      "listTools": true,
+      "callTool": true,
+      "count": 8
+    },
+    "resources": {
+      "listResources": true,
+      "readResource": true,
+      "subscribeResource": true,
+      "count": 4
+    },
+    "prompts": {
+      "listPrompts": true,
+      "getPrompt": true,
+      "count": 4
+    },
+    "logging": {
+      "enabled": true,
+      "level": "info"
+    },
+    "experimental": {
+      "sampling": false,
+      "roots": false
+    }
   },
   "security": {
     "input_validation": {
@@ -180,5 +117,285 @@
     },
     "include_mcp_events": true,
     "sensitive_data_masking": true
+  },
+  "tools": [
+    {
+      "name": "expo_read_document",
+      "description": "Read and retrieve Expo documentation, API references, and guides",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "URL of the Expo documentation page"
+          },
+          "format": {
+            "type": "string",
+            "enum": ["markdown", "html", "text"],
+            "default": "markdown"
+          }
+        },
+        "required": ["url"]
+      }
+    },
+    {
+      "name": "expo_search_documents",
+      "description": "Search across Expo ecosystem content with typo tolerance",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Search query string"
+          },
+          "type": {
+            "type": "string",
+            "enum": ["all", "documentation", "api", "guides", "examples"],
+            "default": "all"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 10
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "expo_recommend",
+      "description": "Get context-aware recommendations for Expo development",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "string",
+            "description": "Current development context or code snippet"
+          },
+          "intent": {
+            "type": "string",
+            "enum": ["debug", "optimize", "learn", "implement"],
+            "default": "learn"
+          }
+        },
+        "required": ["context"]
+      }
+    },
+    {
+      "name": "expo_get_sdk_module",
+      "description": "Retrieve detailed information about specific Expo SDK modules",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "module_name": {
+            "type": "string",
+            "description": "Name of the Expo SDK module"
+          },
+          "version": {
+            "type": "string",
+            "description": "SDK version (defaults to latest)"
+          }
+        },
+        "required": ["module_name"]
+      }
+    },
+    {
+      "name": "expo_config_templates",
+      "description": "Generate and validate Expo configuration files",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": ["app.json", "eas.json", "metro.config.js", "babel.config.js"],
+            "description": "Type of configuration file"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android", "web", "all"],
+            "default": "all"
+          },
+          "profile": {
+            "type": "string",
+            "enum": ["development", "preview", "production"],
+            "default": "development"
+          }
+        },
+        "required": ["type"]
+      }
+    },
+    {
+      "name": "expo_eas_command_builder",
+      "description": "Build and validate EAS CLI commands",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": ["build", "submit", "update", "device", "credentials"],
+            "description": "EAS CLI action to perform"
+          },
+          "platform": {
+            "type": "string",
+            "enum": ["ios", "android", "all"],
+            "default": "all"
+          },
+          "options": {
+            "type": "object",
+            "description": "Additional command options"
+          }
+        },
+        "required": ["action"]
+      }
+    },
+    {
+      "name": "expo_code_examples",
+      "description": "Retrieve executable code examples with Snack integration",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "topic": {
+            "type": "string",
+            "description": "Topic or feature to get examples for"
+          },
+          "complexity": {
+            "type": "string",
+            "enum": ["basic", "intermediate", "advanced"],
+            "default": "basic"
+          },
+          "snack_ready": {
+            "type": "boolean",
+            "default": true,
+            "description": "Generate Snack-compatible code"
+          }
+        },
+        "required": ["topic"]
+      }
+    },
+    {
+      "name": "expo_error_diagnosis",
+      "description": "Analyze errors and provide solutions for Expo development",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "error_message": {
+            "type": "string",
+            "description": "Error message or stack trace"
+          },
+          "context": {
+            "type": "string",
+            "description": "Additional context (platform, SDK version, etc.)"
+          },
+          "suggest_fixes": {
+            "type": "boolean",
+            "default": true,
+            "description": "Include suggested fixes"
+          }
+        },
+        "required": ["error_message"]
+      }
+    }
+  ],
+  "resources": [
+    {
+      "uri": "expo://docs/latest",
+      "name": "Latest Expo Documentation",
+      "description": "Latest version of Expo documentation"
+    },
+    {
+      "uri": "expo://sdk/latest",
+      "name": "Latest SDK Reference",
+      "description": "Latest Expo SDK API reference"
+    },
+    {
+      "uri": "expo://guides/setup",
+      "name": "Setup Guides",
+      "description": "Installation and setup guides"
+    },
+    {
+      "uri": "expo://examples/community",
+      "name": "Community Examples",
+      "description": "Community-contributed code examples"
+    }
+  ],
+  "prompts": [
+    {
+      "name": "expo_quickstart",
+      "description": "Quick start guide for Expo development",
+      "arguments": [
+        {
+          "name": "project_type",
+          "description": "Type of project to create",
+          "required": false
+        }
+      ]
+    },
+    {
+      "name": "expo_debugging",
+      "description": "Debugging assistance for Expo projects",
+      "arguments": [
+        {
+          "name": "issue_description",
+          "description": "Description of the issue",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "expo_api_usage",
+      "description": "API usage examples and best practices",
+      "arguments": [
+        {
+          "name": "module_name",
+          "description": "Expo SDK module name",
+          "required": true
+        }
+      ]
+    },
+    {
+      "name": "expo_config_analyzer",
+      "description": "Configuration analysis and optimization",
+      "arguments": [
+        {
+          "name": "config_content",
+          "description": "Current configuration content",
+          "required": true
+        }
+      ]
+    }
+  ],
+  "installation": {
+    "npm": {
+      "global": "npm install -g expo-mcp-server",
+      "local": "npm install expo-mcp-server"
+    },
+    "usage": {
+      "stdio": "expo-mcp-server --stdio",
+      "http": "expo-mcp-server --port 3000",
+      "help": "expo-mcp-server --help"
+    }
+  },
+  "clientIntegration": {
+    "cursor": {
+      "configPath": "~/.cursor/mcp_servers.json",
+      "config": {
+        "expo-mcp-server": {
+          "command": "expo-mcp-server",
+          "args": ["--stdio"]
+        }
+      }
+    },
+    "claude_desktop": {
+      "configPath": "~/Library/Application Support/Claude/claude_desktop_config.json",
+      "config": {
+        "mcpServers": {
+          "expo-mcp-server": {
+            "command": "expo-mcp-server",
+            "args": ["--stdio"]
+          }
+        }
+      }
+    }
   }
 } 

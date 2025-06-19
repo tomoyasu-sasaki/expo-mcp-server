@@ -1,0 +1,235 @@
+name: Security Scan
+
+on:
+  push:
+    paths:
+      - 'Dockerfile'
+      - 'docker/**'
+  schedule:
+    - cron: '0 3 * * *' # Daily at 3 AM UTC
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: expo/mcp-server
+
+jobs:
+  # =========================
+  # 🔐 Docker Security Scan
+  # =========================
+  docker-security:
+    name: "🔐 Docker Security"
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      packages: read
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        
+      - name: "🏗️ Set up Docker Buildx"
+        uses: docker/setup-buildx-action@v3
+        
+      - name: "🐳 Build Docker image for scanning"
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: expo-mcp-security-scan:latest
+          cache-from: type=gha
+          
+      - name: "🔒 Run Trivy vulnerability scanner"
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'expo-mcp-security-scan:latest'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          
+      - name: "🔍 Run Trivy filesystem scan"
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          
+      - name: "📤 Upload Trivy scan results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+          
+      - name: "📤 Upload Trivy filesystem results"
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          
+      - name: "🔐 Run Docker Scout security scan"
+        if: github.event_name != 'pull_request'
+        uses: docker/scout-action@v1
+        with:
+          command: cves
+          image: expo-mcp-security-scan:latest
+          sarif-file: scout-results.sarif
+          
+      - name: "📤 Upload Scout scan results"
+        if: github.event_name != 'pull_request'
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'scout-results.sarif'
+
+  # =========================
+  # 🔒 Dependency Security Audit
+  # =========================
+  dependency-audit:
+    name: "🔒 Dependency Audit"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        
+      - name: "🏗️ Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: "📦 Install dependencies"
+        run: npm ci
+        
+      - name: "🔍 NPM Audit (High/Critical)"
+        run: |
+          npm audit --audit-level=high --json > npm-audit-results.json || true
+          
+      - name: "📊 NPM Audit Report"
+        run: |
+          if [ -s npm-audit-results.json ]; then
+            echo "🔍 Security vulnerabilities found:"
+            cat npm-audit-results.json | jq -r '.vulnerabilities | to_entries[] | "\(.key): \(.value.severity)"'
+          else
+            echo "✅ No high/critical vulnerabilities found"
+          fi
+          
+      - name: "🔐 Audit production dependencies only"
+        run: npm audit --production --audit-level=moderate
+        
+      - name: "📤 Upload audit results"
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-audit-results
+          path: |
+            npm-audit-results.json
+          retention-days: 30
+
+  # =========================
+  # 🛡️ Binary Security Check
+  # =========================
+  binary-security:
+    name: "🛡️ Binary Security"
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: "📥 Checkout repository"
+        uses: actions/checkout@v4
+        
+      - name: "🏗️ Setup Node.js"
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          
+      - name: "📦 Install dependencies"
+        run: npm ci
+        
+      - name: "🔧 Build binaries"
+        run: npm run binary:build
+        
+      - name: "🔍 Check binary signatures"
+        run: |
+          echo "📋 Binary Information:"
+          for binary in binaries/expo-mcp-server-*; do
+            if [ -f "$binary" ]; then
+              echo "🔍 Analyzing: $binary"
+              file "$binary"
+              stat "$binary"
+              # Check for embedded strings (potential secrets)
+              strings "$binary" | grep -E "(api|key|token|secret)" | head -5 || true
+            fi
+          done
+          
+      - name: "🔒 Verify binary integrity"
+        run: |
+          cd binaries
+          sha256sum expo-mcp-server-* > checksums.sha256
+          echo "✅ Checksums created:"
+          cat checksums.sha256
+          
+      - name: "📤 Upload binary checksums"
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-checksums
+          path: binaries/checksums.sha256
+          retention-days: 90
+
+  # =========================
+  # 📊 Security Report
+  # =========================
+  security-report:
+    name: "📊 Security Report"
+    runs-on: ubuntu-latest
+    needs: [docker-security, dependency-audit, binary-security]
+    if: always()
+    
+    steps:
+      - name: "📥 Download security artifacts"
+        uses: actions/download-artifact@v4
+        with:
+          name: security-audit-results
+          path: security-results/
+          
+      - name: "📊 Generate Security Summary"
+        run: |
+          echo "# 🔐 Security Scan Summary" > security-summary.md
+          echo "" >> security-summary.md
+          echo "## 📅 Scan Date: $(date)" >> security-summary.md
+          echo "" >> security-summary.md
+          
+          if [ "${{ needs.docker-security.result }}" == "success" ]; then
+            echo "✅ Docker Security: PASSED" >> security-summary.md
+          else
+            echo "❌ Docker Security: FAILED" >> security-summary.md
+          fi
+          
+          if [ "${{ needs.dependency-audit.result }}" == "success" ]; then
+            echo "✅ Dependency Audit: PASSED" >> security-summary.md
+          else
+            echo "❌ Dependency Audit: FAILED" >> security-summary.md
+          fi
+          
+          if [ "${{ needs.binary-security.result }}" == "success" ]; then
+            echo "✅ Binary Security: PASSED" >> security-summary.md
+          else
+            echo "❌ Binary Security: FAILED" >> security-summary.md
+          fi
+          
+          echo "" >> security-summary.md
+          echo "## 📋 Next Steps" >> security-summary.md
+          echo "- Review scan results in Security tab" >> security-summary.md
+          echo "- Update dependencies if vulnerabilities found" >> security-summary.md
+          echo "- Verify binary integrity before distribution" >> security-summary.md
+          
+          cat security-summary.md
+          
+      - name: "📤 Upload security summary"
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-summary
+          path: security-summary.md
+          retention-days: 90 

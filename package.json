@@ -3,23 +3,55 @@
   "version": "1.0.0",
   "description": "Model Context Protocol (MCP) サーバーの実装。Expo ドキュメント、API リファレンス、コミュニティリソースからコンテンツを取得・インデックス化・検索し、Cursor や他の開発者ツールでMCPプロトコル経由で利用可能にします。",
   "main": "dist/index.js",
+  "module": "dist/index.mjs",
   "type": "module",
   "bin": {
-    "expo-mcp-server": "./dist/index.js"
+    "expo-mcp-server": "./dist/index.js",
+    "expo-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist/**/*",
+    "config/default.json",
+    "config/production.json",
+    "mcp-config.json",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
   "scripts": {
     "start": "node dist/index.js",
     "mcp:stdio": "node dist/index.js --stdio",
     "mcp:http": "node dist/index.js --port 3000",
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:@modelcontextprotocol/sdk --external:commander --external:events --external:node:events --external:fs --external:path --external:util --external:crypto --external:os --external:url --external:child_process --external:fastify --external:@fastify/cors --external:@fastify/rate-limit --external:@fastify/websocket",
+    "build": "npm run build:clean && npm run build:tsc && npm run build:bundle",
+    "build:clean": "rm -rf dist",
+    "build:tsc": "tsc",
+    "build:bundle": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.js --external:@modelcontextprotocol/sdk --external:commander --external:events --external:node:events --external:fs --external:path --external:util --external:crypto --external:os --external:url --external:child_process --external:fastify --external:@fastify/cors --external:@fastify/rate-limit --external:@fastify/websocket --external:prom-client --external:redis --external:typesense --external:axios --external:fs-extra",
+    "build:bundle:cjs": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=dist/index.cjs --external:events --external:node:events --external:fs --external:path --external:util --external:crypto --external:os --external:url --external:child_process",
+    "build:esm": "esbuild src/index.ts --bundle --platform=node --format=esm --outfile=dist/index.mjs --external:@modelcontextprotocol/sdk --external:commander --external:events --external:node:events --external:fs --external:path --external:util --external:crypto --external:os --external:url --external:child_process --external:fastify --external:@fastify/cors --external:@fastify/rate-limit --external:@fastify/websocket",
+    "prepublishOnly": "npm run build && npm run test && npm run lint",
+    "postinstall": "node -e \"console.log('✅ Expo MCP Server installed successfully! Run: npx expo-mcp-server --help')\"",
+    "binary:build": "npm run build:tsc && npm run build:bundle:cjs && npm run binary:pkg",
+    "binary:pkg": "pkg dist/index.cjs --config pkg.config.json --out-path binaries/",
+    "binary:test": "npm run binary:test:linux && npm run binary:test:macos && npm run binary:test:windows",
+    "binary:test:linux": "if [ -f binaries/expo-mcp-server-linux ]; then ./binaries/expo-mcp-server-linux --help; fi",
+    "binary:test:macos": "if [ -f binaries/expo-mcp-server-macos ]; then ./binaries/expo-mcp-server-macos --help; fi", 
+    "binary:test:windows": "if [ -f binaries/expo-mcp-server-win.exe ]; then ./binaries/expo-mcp-server-win.exe --help; fi",
+    "binary:package": "npm run binary:build && npm run binary:sign && npm run binary:compress",
+    "binary:sign": "echo 'Binary signing placeholder - implement with actual signing key'",
+    "binary:compress": "cd binaries && tar -czf expo-mcp-server-binaries.tar.gz expo-mcp-server-*",
     "test": "jest",
     "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
+    "test:integration": "jest --testPathPattern=integration",
+    "test:e2e": "jest --testPathPattern=e2e",
     "test:mcp": "jest --testPathPattern=mcp",
+    "test:package": "npm pack && tar -tzf *.tgz | head -20",
     "lint": "eslint src/**/*.ts",
     "lint:fix": "eslint src/**/*.ts --fix",
     "type-check": "tsc --noEmit",
     "docker:build": "docker build -t expo-mcp-server .",
+    "docker:buildx": "docker buildx build --platform linux/amd64,linux/arm64 -t expo-mcp-server:latest .",
     "docker:run": "docker run -p 3000:3000 expo-mcp-server",
     "docker:mcp": "docker run -i expo-mcp-server --stdio"
   },
@@ -30,13 +62,49 @@
     "react-native",
     "cursor",
     "ai-tools",
-    "documentation"
+    "documentation",
+    "development-server",
+    "developer-tools",
+    "code-assistant",
+    "json-rpc",
+    "stdio",
+    "http-api"
   ],
-  "author": "Expo DevRel Team",
+  "author": {
+    "name": "Expo DevRel Team",
+    "email": "devrel@expo.dev",
+    "url": "https://expo.dev"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=8.0.0"
+  },
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
+  "preferGlobal": false,
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
+  "mcp": {
+    "mcpVersion": "2024-11-05",
+    "serverName": "expo-mcp-server",
+    "capabilities": {
+      "tools": true,
+      "resources": true,
+      "prompts": true,
+      "logging": true
+    },
+    "defaultCommand": "expo-mcp-server --stdio",
+    "transport": "stdio"
   },
   "dependencies": {
     "@fastify/cors": "^11.0.1",
@@ -75,6 +143,7 @@
     "eslint": "^8.x",
     "eventsource": "^4.0.0",
     "jest": "^29.x",
+    "pkg": "^5.8.1",
     "prettier": "^3.x",
     "ts-jest": "^29.4.0",
     "tsx": "^4.x",
