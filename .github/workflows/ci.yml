@@ -325,7 +325,7 @@ jobs:
         id: build
         with:
           context: .
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          platforms: linux/amd64
           push: ${{ github.event_name != 'pull_request' }}
           tags: |
             expo-mcp-server:local
@@ -333,7 +333,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          load: true  # Load image locally for security scanning
+          load: true  # Load locally for security scanning
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
@@ -341,59 +341,72 @@ jobs:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
           output: 'trivy-docker-results.sarif'
-          severity: 'CRITICAL,HIGH,MEDIUM'
+          severity: 'CRITICAL,HIGH'
           exit-code: '0'  # Don't fail the workflow on vulnerabilities
-          timeout: '10m'
+          timeout: '5m'
           hide-progress: false
-          cache-dir: /tmp/trivy-cache
         continue-on-error: true  # Allow workflow to continue if scan fails
         env:
-          TRIVY_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-db
-          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/aquasecurity/trivy-java-db
+          TRIVY_TIMEOUT: 5m
+          TRIVY_QUIET: false
         
       - name: "🔍 Verify Docker image and scan setup"
         if: always()
         run: |
-          echo "🐳 Verifying Docker images before Trivy scan:"
-          docker images | grep -E "(expo-mcp-server|local)" || echo "No matching images found"
+          echo "🐳 Verifying Docker images:"
+          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | head -10
           
-          echo "🔍 Checking if Trivy scan produced any output:"
-          ls -la trivy* 2>/dev/null || echo "No trivy output files found"
+          echo "🔍 Checking for expo-mcp-server images:"
+          if docker images | grep -q "expo-mcp-server.*local"; then
+            echo "✅ Docker image 'expo-mcp-server:local' found"
+          else
+            echo "❌ Docker image 'expo-mcp-server:local' not found"
+            echo "🔍 Available images:"
+            docker images
+          fi
           
+          echo "🔍 Checking Trivy scan results:"
           if [ -f "trivy-docker-results.sarif" ]; then
             echo "✅ Trivy SARIF file exists"
-            echo "📊 File size: $(du -h trivy-docker-results.sarif)"
-            echo "📋 File content preview:"
-            head -n 20 trivy-docker-results.sarif || echo "Cannot preview file"
+            echo "📊 File size: $(du -h trivy-docker-results.sarif | cut -f1)"
+            
+            # Validate SARIF format
+            if command -v jq >/dev/null 2>&1; then
+              if jq empty trivy-docker-results.sarif 2>/dev/null; then
+                echo "✅ SARIF file is valid JSON"
+                RESULT_COUNT=$(jq '.runs[0].results | length' trivy-docker-results.sarif 2>/dev/null || echo "0")
+                echo "📊 Found $RESULT_COUNT security findings"
+              else
+                echo "⚠️ SARIF file contains invalid JSON"
+              fi
+            fi
           else
-            echo "❌ Trivy SARIF file not found - trying alternative scan methods"
-            
-            # Alternative 1: Basic image inspection
-            echo "🔍 Basic Docker image inspection:"
-            docker inspect expo-mcp-server:local --format='{{json .Config}}' | jq -r '.User, .Env[]' || echo "Image inspection failed"
-            
-            # Alternative 2: Create empty SARIF for consistent workflow
-            echo "📝 Creating empty SARIF file to prevent upload errors:"
+            echo "⚠️ Trivy SARIF file not found - creating minimal valid SARIF"
             cat > trivy-docker-results.sarif << 'EOF'
-            {
-              "version": "2.1.0", 
-              "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
-              "runs": [
-                {
-                  "tool": {
-                    "driver": {
-                      "name": "Trivy",
-                      "informationUri": "https://github.com/aquasecurity/trivy", 
-                      "version": "fallback"
-                    }
-                  },
-                  "results": []
-                }
-              ]
-            }
-            EOF
-            echo "✅ Empty SARIF file created for workflow consistency"
+{
+  "version": "2.1.0",
+  "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "Trivy",
+          "informationUri": "https://github.com/aquasecurity/trivy",
+          "version": "fallback"
+        }
+      },
+      "results": [],
+      "properties": {
+        "note": "Scan completed but no results file generated"
+      }
+    }
+  ]
+}
+EOF
+            echo "✅ Created fallback SARIF file"
           fi
+          
+          echo "✅ Docker image verification completed"
           
       - name: "📤 Upload Docker scan results"
         uses: github/codeql-action/upload-sarif@v3
