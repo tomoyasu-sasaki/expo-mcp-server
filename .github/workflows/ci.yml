@@ -344,6 +344,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
         
       - name: "🏷️ Extract metadata"
+        if: github.event_name != 'pull_request'
         id: meta
         uses: docker/metadata-action@v5
         with:
@@ -351,7 +352,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=tag
-            type=ref,event=pr,prefix=pr-
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
@@ -360,26 +360,58 @@ jobs:
           flavor: |
             latest=false
             
-      - name: "🏗️ Build and Push Docker image"
+      - name: "🏗️ Build Docker image (PR)"
+        if: github.event_name == 'pull_request'
         uses: docker/build-push-action@v5
-        id: build
+        id: build-pr
         with:
           context: .
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') }}
-          tags: |
-            ${{ github.event_name == 'pull_request' && 'expo-mcp-server:local' || steps.meta.outputs.tags }}
+          platforms: linux/amd64
+          push: false
+          tags: expo-mcp-server:local
+          labels: |
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          
+      - name: "🏗️ Build Docker image for Development Branch"
+        if: github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/build-push-action@v5
+        id: build-dev
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+          tags: expo-mcp-server:local
+          labels: |
+            org.opencontainers.image.description=Expo MCP Server
+            org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          load: true
+          
+      - name: "🏗️ Build and Push Docker image (Production)"
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/build-push-action@v5
+        id: build-prod
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             org.opencontainers.image.description=Expo MCP Server
             org.opencontainers.image.source=https://github.com/tomoyasu-sasaki/expo-mcp-server
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          load: ${{ github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
-        if: github.event_name == 'pull_request' || !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))  # Only scan when image is loaded locally
+        if: github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))  # Only scan development branches
+        id: trivy-scan
         with:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
@@ -403,20 +435,21 @@ jobs:
             echo "✅ PR: Docker image built locally for testing"
             if docker images | grep -q "expo-mcp-server.*local"; then
               echo "✅ Docker image 'expo-mcp-server:local' found"
+              echo "🔍 Build ID: ${{ steps.build-pr.outputs.imageid || 'N/A' }}"
             else
               echo "❌ Docker image 'expo-mcp-server:local' not found"
             fi
           elif [[ "${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == refs/tags/v* ]]; then
             echo "✅ Docker image pushed to registry for main branch or release"
-            echo "🚀 Image tags: ${{ steps.meta.outputs.tags }}"
+            echo "🚀 Image tags: ${{ steps.meta.outputs.tags || 'N/A' }}"
+            echo "🔍 Build ID: ${{ steps.build-prod.outputs.imageid || 'N/A' }}"
           else
-            echo "🔍 Checking for expo-mcp-server images:"
+            echo "✅ Development branch - Docker image built locally for scanning"
             if docker images | grep -q "expo-mcp-server.*local"; then
-              echo "✅ Docker image 'expo-mcp-server:local' found for security scanning"
+              echo "✅ Docker image 'expo-mcp-server:local' found"
+              echo "🔍 Build ID: ${{ steps.build-dev.outputs.imageid || 'N/A' }}"
             else
               echo "❌ Docker image 'expo-mcp-server:local' not found"
-              echo "🔍 Available images:"
-              docker images
             fi
           fi
           
@@ -436,16 +469,23 @@ jobs:
               fi
             fi
           else
-            echo "⚠️ Trivy SARIF file not found - creating minimal valid SARIF"
-            echo '{"version":"2.1.0","$schema":"https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Trivy","informationUri":"https://github.com/aquasecurity/trivy","version":"fallback"}},"results":[],"properties":{"note":"Scan completed but no results file generated"}}]}' > trivy-docker-results.sarif
-            echo "✅ Created fallback SARIF file"
+            echo "⚠️ Trivy SARIF file not found"
+            if [[ "${{ steps.trivy-scan.outcome }}" == "success" || "${{ steps.trivy-scan.outcome }}" == "failure" ]]; then
+              echo "🔧 Trivy scan was attempted but no SARIF file generated - creating minimal valid SARIF"
+              echo '{"version":"2.1.0","$schema":"https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json","runs":[{"tool":{"driver":{"name":"Trivy","informationUri":"https://github.com/aquasecurity/trivy","version":"fallback"}},"results":[],"properties":{"note":"Scan completed but no results file generated"}}]}' > trivy-docker-results.sarif
+              echo "✅ Created fallback SARIF file for completed scan"
+            else
+              echo "ℹ️ No Trivy scan was performed - no SARIF file needed"
+            fi
           fi
           
           echo "✅ Docker image verification completed"
           
       - name: "📤 Upload Docker scan results"
         uses: github/codeql-action/upload-sarif@v3
-        if: always() && hashFiles('trivy-docker-results.sarif') != '' && github.event_name != 'pull_request' && !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        # Only upload SARIF when Trivy scan was actually executed (development branches only)
+        # This prevents uploading empty/fallback SARIF files for PRs and production builds
+        if: (steps.trivy-scan.outcome == 'success' || steps.trivy-scan.outcome == 'failure') && hashFiles('trivy-docker-results.sarif') != ''
         with:
           sarif_file: 'trivy-docker-results.sarif'
           category: 'trivy-docker-security'
@@ -469,14 +509,14 @@ jobs:
             echo "✅ Docker image pushed to registry - security scanning skipped for production images"
             echo "📋 Registry: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           elif [ -f "trivy-docker-results.sarif" ]; then
-            echo "✅ SARIF results file generated successfully"
+            echo "✅ Development branch: Security scan completed"
             # Extract vulnerability count from SARIF if possible
             if command -v jq >/dev/null 2>&1; then
               VULNS=$(jq '.runs[0].results | length' trivy-docker-results.sarif 2>/dev/null || echo "Unable to parse")
-              echo "📊 Found $VULNS potential issues"
+              echo "📊 Found $VULNS potential issues in development branch"
             fi
           else
-            echo "⚠️ SARIF results file not generated"
+            echo "⚠️ Development branch: SARIF results file not generated"
             echo "🔍 Checking available files:"
             ls -la *.sarif 2>/dev/null || echo "No SARIF files found"
             echo "🐳 Available Docker images:"
