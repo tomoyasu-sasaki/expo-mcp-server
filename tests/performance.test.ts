@@ -1,10 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach, jest } from '@jest/globals';
 import { CacheManager } from '../src/services/cache-manager';
 import { PerformanceMonitor } from '../src/services/performance-monitor';
-import { ExpoSearchEngine } from '../src/services/search-engine';
 import { ConfigManager } from '../src/utils/config';
 import * as fs from 'fs-extra';
-import * as path from 'path';
 
 // テスト用の設定
 const testConfig = {

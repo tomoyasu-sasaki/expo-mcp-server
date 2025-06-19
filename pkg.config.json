@@ -4,7 +4,8 @@
   "main": "dist/index.cjs",
   "pkg": {
     "scripts": [
-      "dist/**/*.js"
+      "dist/**/*.js",
+      "dist/**/*.cjs"
     ],
     "assets": [
       "config/default.json",
@@ -20,7 +21,8 @@
     ],
     "outputPath": "binaries/",
     "options": [
-      "--compress"
+      "--compress",
+      "--no-bytecode"
     ]
   },
   "bin": {

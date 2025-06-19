@@ -26,6 +26,47 @@ beforeAll(() => {
   process.env.NODE_ENV = 'test';
   process.env.REDIS_URL = 'redis://localhost:6380';
   process.env.TYPESENSE_URL = 'http://localhost:8109';
+  
+  // Mock fetch for external services
+  global.fetch = jest.fn().mockImplementation((url: unknown) => {
+    const urlString = String(url);
+    if (urlString.includes('docs.expo.dev')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: async () => '# Test Documentation\n\nMock content for testing.',
+        json: async () => ({ test: 'data' }),
+        headers: new Map([['content-type', 'text/markdown']])
+      });
+    }
+    
+    if (urlString.includes('typesense')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          hits: [],
+          found: 0,
+          search_time_ms: 1
+        })
+      });
+    }
+    
+    if (urlString.includes('api.expo.dev')) {
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: async () => ({ modules: [] })
+      });
+    }
+    
+    return Promise.resolve({
+      ok: false,
+      status: 404,
+      text: async () => 'Not found',
+      json: async () => ({ error: 'Not found' })
+    });
+  }) as jest.MockedFunction<typeof fetch>;
 });
 
 afterAll(async () => {
@@ -47,7 +88,6 @@ afterAll(async () => {
 afterEach(async () => {
   // Clear all mocks
   jest.clearAllMocks();
-  jest.restoreAllMocks();
   
   // Clear any remaining timers
   jest.clearAllTimers();
@@ -60,6 +100,10 @@ process.on('unhandledRejection', (error: any) => {
     if (error?.message?.includes('ECONNREFUSED') && error?.message?.includes('6380')) {
       return;
     }
+    // Suppress ES Module warnings
+    if (error?.message?.includes('Cannot use import statement')) {
+      return;
+    }
   }
   console.error('Unhandled Promise Rejection:', error);
 });
@@ -68,6 +112,9 @@ process.on('unhandledRejection', (error: any) => {
 const originalEmit = process.emit;
 process.emit = function (name: string, ...args: any[]) {
   if (name === 'warning' && args[0]?.name === 'MaxListenersExceededWarning') {
+    return false;
+  }
+  if (name === 'warning' && args[0]?.message?.includes('ExperimentalWarning')) {
     return false;
   }
   return originalEmit.call(this, name, ...args);
