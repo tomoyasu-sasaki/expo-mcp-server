@@ -321,7 +321,7 @@ jobs:
     name: "🐳 Docker Build"
     runs-on: ubuntu-latest
     needs: [test]  # Remove security dependency for parallel execution
-    if: github.event_name != 'pull_request'  # Skip for PR to save time
+    # Always run to verify Docker builds, but skip push for PR
     permissions:
       contents: read
       packages: write
@@ -376,7 +376,7 @@ jobs:
           
       - name: "🔒 Run Trivy vulnerability scanner"
         uses: aquasecurity/trivy-action@master
-        if: ${{ !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}  # Only scan when image is loaded locally
+        if: ${{ !(github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) }}  # Only scan when image is loaded locally (not pushed)
         with:
           image-ref: 'expo-mcp-server:local'
           format: 'sarif'
@@ -467,10 +467,10 @@ jobs:
   # 🧪 Integration Testing
   # =========================
   integration:
-    name: "🧪 Integration Tests"
+    name: "🧪 Integration Tests" 
     runs-on: ubuntu-latest
     needs: [build]
-    if: github.event_name != 'pull_request'  # Skip for PR to save time
+    # Run for all events to ensure integration quality
     
     steps:
       - name: "📥 Checkout repository"
