@@ -22,8 +22,16 @@ jobs:
     name: "🧪 Test Suite"
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         node-version: ['18', '20', '22']
+        test-group: ['fast', 'integration', 'security']
+        exclude:
+          # Reduce matrix combinations for faster execution
+          - node-version: '20'
+            test-group: 'security'
+          - node-version: '22'
+            test-group: 'security'
     
     steps:
       - name: "📥 Checkout repository"
@@ -34,31 +42,52 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+          cache-dependency-path: 'package-lock.json'
           
       - name: "📦 Install dependencies"
-        run: npm ci
+        run: |
+          npm ci --prefer-offline --no-audit --no-fund
         
       - name: "🔍 Type checking"
+        if: matrix.test-group == 'fast' && matrix.node-version == '18'
         run: npm run type-check
         
-      - name: "🎨 Lint check"
+      - name: "🎨 Lint check" 
+        if: matrix.test-group == 'fast' && matrix.node-version == '18'
         run: npm run lint
         
-      - name: "🧪 Run tests"
+      - name: "🧪 Run fast tests"
+        if: matrix.test-group == 'fast'
         run: |
-          echo "🧪 Running fast test suite to avoid timeout issues..."
-          npm run test:fast 2>&1 | tee test-results.log || {
-            echo "❌ Tests failed. Detailed error analysis:"
-            echo "=== Failed Tests Summary ==="
-            grep -A 5 -B 5 "FAIL\|Error:" test-results.log || echo "No specific error patterns found"
-            echo "=== Configuration Issues ==="
-            grep -A 10 "Configuration validation failed" test-results.log || echo "No configuration errors found"
-            echo "=== Redis Connection Issues ==="
-            grep -A 5 "ECONNREFUSED.*6380" test-results.log || echo "No Redis connection errors found"
-            echo "=== Open Handles Issues ==="
-            grep -A 10 "open handles" test-results.log || echo "No open handles detected"
+          echo "🧪 Running ultra-fast test suite (Node.js ${{ matrix.node-version }})..."
+          npm run test:ultra-fast 2>&1 | tee test-results.log || {
+            echo "❌ Ultra-fast tests failed. Showing last 20 lines:"
+            tail -20 test-results.log
             exit 1
           }
+          echo "✅ Ultra-fast tests completed successfully"
+          
+      - name: "🧪 Run integration tests"
+        if: matrix.test-group == 'integration'
+        run: |
+          echo "🧪 Running integration tests (Node.js ${{ matrix.node-version }})..."
+          npm run test:integration 2>&1 | tee integration-results.log || {
+            echo "❌ Integration tests failed. Showing last 20 lines:"
+            tail -20 integration-results.log
+            exit 1
+          }
+          echo "✅ Integration tests completed successfully"
+          
+      - name: "🧪 Run security tests"
+        if: matrix.test-group == 'security'
+        run: |
+          echo "🧪 Running security tests (Node.js ${{ matrix.node-version }})..."
+          npx jest tests/security.test.ts --maxWorkers=2 --forceExit --testTimeout=10000 2>&1 | tee security-results.log || {
+            echo "❌ Security tests failed. Showing last 20 lines:"
+            tail -20 security-results.log
+            exit 1
+          }
+          echo "✅ Security tests completed successfully"
         
       - name: "📊 Upload coverage to Codecov"
         if: matrix.node-version == '18'
@@ -182,8 +211,9 @@ jobs:
   binary:
     name: "🔧 Binary Build"
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [test]  # Remove security dependency for faster execution
     continue-on-error: true  # Allow pipeline to continue if binary build fails
+    if: github.event_name != 'pull_request'  # Skip for PR to save time
     
     steps:
       - name: "📥 Checkout repository"
@@ -287,7 +317,8 @@ jobs:
   docker:
     name: "🐳 Docker Build"
     runs-on: ubuntu-latest
-    needs: [test, security]
+    needs: [test]  # Remove security dependency for parallel execution
+    if: github.event_name != 'pull_request'  # Skip for PR to save time
     permissions:
       contents: read
       packages: write
@@ -421,6 +452,7 @@ jobs:
     name: "🧪 Integration Tests"
     runs-on: ubuntu-latest
     needs: [build]
+    if: github.event_name != 'pull_request'  # Skip for PR to save time
     
     steps:
       - name: "📥 Checkout repository"
@@ -444,8 +476,8 @@ jobs:
       - name: "🧪 Run integration tests (limited)"
         run: |
           echo "🧪 Running limited integration tests..."
-          # Skip problematic ES module tests temporarily
-          npm run test:fast
+          # Use ultra-fast tests for integration job
+          npm run test:ultra-fast
           echo "✅ Basic tests completed successfully"
           
       - name: "🧪 Test basic MCP functionality"

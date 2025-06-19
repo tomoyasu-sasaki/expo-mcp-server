@@ -126,12 +126,11 @@ services:
     
     # ネットワーク
     networks:
-      expo-mcp-network:
-        ipv4_address: 172.20.0.10
+      - expo-mcp-network
     
     # ヘルスチェック
     healthcheck:
-      test: ["CMD", "node", "health-check.cjs"]
+      test: ["CMD", "node", "docker/health-check.cjs"]
       interval: 30s
       timeout: 10s
       retries: 3
