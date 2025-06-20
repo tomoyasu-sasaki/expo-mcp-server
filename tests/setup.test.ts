@@ -30,10 +30,11 @@ describe('テスト環境セットアップ', () => {
   });
 
   test('Jest環境確認', () => {
-    expect(jest).toBeDefined();
     expect(expect).toBeDefined();
     expect(describe).toBeDefined();
     expect(test).toBeDefined();
+    expect(typeof beforeAll).toBe('function');
+    expect(typeof afterAll).toBe('function');
 
     console.log('✅ Jest環境正常動作確認');
   });
