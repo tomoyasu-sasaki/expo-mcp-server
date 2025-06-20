@@ -28,8 +28,11 @@ fi
 
 echo "✅ Pre-flight checks completed"
 
-# MCP モードに応じた起動
-if [ "${MCP_MODE}" = "stdio" ]; then
+# 引数がある場合はそれを使用、なければ環境変数に応じた起動
+if [ $# -gt 0 ]; then
+    echo "🔧 Starting MCP server with arguments: $@"
+    exec node /app/dist/index.js "$@"
+elif [ "${MCP_MODE}" = "stdio" ]; then
     echo "🔌 Starting MCP server in stdio mode..."
     exec node /app/dist/index.js --stdio
 elif [ "${MCP_MODE}" = "http" ]; then
@@ -37,5 +40,5 @@ elif [ "${MCP_MODE}" = "http" ]; then
     exec node /app/dist/index.js --port "${MCP_PORT:-3000}"
 else
     echo "🔧 Starting MCP server with default configuration..."
-    exec node /app/dist/index.js
+    exec node /app/dist/index.js --stdio
 fi 

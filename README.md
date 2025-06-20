@@ -101,28 +101,66 @@ npm run lint
 
 ### Cursor IDE
 
-**手動設定 (.cursor/mcp_servers.json)**:
+**Docker設定 (推奨) (.cursor/mcp.json)**:
 ```json
 {
-  "expo-mcp-server": {
-    "command": "npx",
-    "args": ["expo-mcp-server", "--stdio"],
-    "env": {
-      "NODE_ENV": "production"
+  "mcpServers": {
+    "expo-mcp-server": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "NODE_ENV=production",
+        "-e", "MCP_MODE=stdio",
+        "-e", "LOG_LEVEL=info",
+        "expo-mcp-server:latest",
+        "--stdio"
+      ]
     }
   }
 }
 ```
 
-**自動設定 (推奨)**:
-```bash
-# mcp-config.json を使用した自動設定
-npx expo-mcp-server --configure cursor
+**npm設定 (代替)**:
+```json
+{
+  "mcpServers": {
+    "expo-mcp-server": {
+      "command": "npx",
+      "args": ["expo-mcp-server", "--stdio"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
 ```
 
 ### Claude Desktop
 
-**設定ファイル編集 (~/Library/Application Support/Claude/claude_desktop_config.json)**:
+**Docker設定 (推奨) (~/Library/Application Support/Claude/claude_desktop_config.json)**:
+```json
+{
+  "mcpServers": {
+    "expo-mcp-server": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-e", "NODE_ENV=production",
+        "-e", "MCP_MODE=stdio",
+        "-e", "LOG_LEVEL=info",
+        "expo-mcp-server:latest",
+        "--stdio"
+      ]
+    }
+  }
+}
+```
+
+**npm設定 (代替)**:
 ```json
 {
   "mcpServers": {
@@ -155,7 +193,7 @@ your-mcp-client --server "expo-mcp-server --stdio"
 | `expo_code_examples` | 実行可能コード例・Snack統合 | 学習・プロトタイピング |
 | `expo_error_diagnosis` | エラー分析・解決策提供 | トラブルシューティング |
 
-詳細は [MCP Tools Reference](docs/mcp-tools-reference.md) を参照してください。
+詳細は [MCP Tools Reference](docs/user-guide/mcp-tools-reference.md) を参照してください。
 
 ## 🐳 Docker での実行
 
@@ -243,7 +281,7 @@ cp config/default.json config/local.json
 vim config/local.json
 ```
 
-詳細は [Installation Guide](docs/installation-guide.md) を参照してください。
+詳細は [Installation Guide](docs/user-guide/installation-guide.md) を参照してください。
 
 ## 🚀 パフォーマンス
 
@@ -265,7 +303,7 @@ MAX_CONCURRENT_SESSIONS=500 \
 expo-mcp-server --stdio
 ```
 
-詳細は [Performance Tuning Guide](docs/performance-tuning-guide.md) を参照してください。
+詳細は [Performance Tuning Guide](docs/operations/performance-tuning-guide.md) を参照してください。
 
 ## 🔒 セキュリティ
 
@@ -275,7 +313,7 @@ expo-mcp-server --stdio
 - **📝 監査ログ**: 全操作ログ記録
 - **🔍 脆弱性スキャン**: 自動セキュリティチェック
 
-詳細は [Security Best Practices](docs/security-best-practices.md) を参照してください。
+詳細は [Security Best Practices](docs/operations/security-best-practices.md) を参照してください。
 
 ## 📊 監視
 
@@ -293,7 +331,7 @@ curl http://localhost:9090/metrics
 - エラー率トラッキング
 - リソース使用量
 
-詳細は [Docker Deployment Guide](docs/docker-deployment.md#monitoring) を参照してください。
+詳細は [Docker Deployment Guide](docs/operations/docker-deployment.md#monitoring) を参照してください。
 
 ## 🔧 開発
 
@@ -341,27 +379,31 @@ npm audit
 4. Push to branch (`git push origin feature/amazing-feature`)
 5. Open Pull Request
 
-詳細は [Contributing Guide](docs/contributing-guide.md) を参照してください。
+詳細は [Contributing Guide](docs/user-guide/contributing-guide.md) を参照してください。
 
 ## 📖 ドキュメント
 
-### ユーザーガイド
-- [📥 Installation Guide](docs/installation-guide.md) - インストール・セットアップ
-- [🔌 MCP Client Integration](docs/mcp-client-integration.md) - クライアント統合方法
-- [⚙️ Cursor IDE Setup](docs/cursor-ide-setup.md) - Cursor IDE設定
-- [🐳 Docker Deployment](docs/docker-deployment.md) - Docker運用ガイド
+完全なドキュメントは [docs/README.md](docs/README.md) をご覧ください。
 
-### 開発者向け
-- [📚 API Reference](docs/api-reference.md) - API仕様書
-- [🛠️ MCP Tools Reference](docs/mcp-tools-reference.md) - ツール詳細
-- [🔒 Security Best Practices](docs/security-best-practices.md) - セキュリティガイド
-- [⚡ Performance Tuning](docs/performance-tuning-guide.md) - パフォーマンス最適化
+### ユーザーガイド
+- [📥 Installation Guide](docs/user-guide/installation-guide.md) - インストール・セットアップ
+- [🔌 MCP Client Integration](docs/user-guide/mcp-client-integration.md) - クライアント統合方法
+- [⚙️ Cursor IDE Setup](docs/user-guide/cursor-ide-setup.md) - Cursor IDE設定
+- [🛠️ MCP Tools Reference](docs/user-guide/mcp-tools-reference.md) - ツール詳細
+- [📚 API Reference](docs/user-guide/api-reference.md) - API仕様書
+
+### 運用ガイド
+- [🐳 Docker Deployment](docs/operations/docker-deployment.md) - Docker運用ガイド
+- [🔒 Security Best Practices](docs/operations/security-best-practices.md) - セキュリティガイド
+- [⚡ Performance Tuning](docs/operations/performance-tuning-guide.md) - パフォーマンス最適化
+- [🚨 Incident Response](docs/operations/incident-response-procedure.md) - インシデント対応
+- [💾 Backup & Recovery](docs/operations/backup-recovery-procedure.md) - バックアップ手順
 
 ### 技術仕様書
-- [📋 JSON Schema Definitions](docs/json-schema-definitions.md) - スキーマ定義
-- [🌐 OpenAPI Specification](docs/openapi-specification.md) - HTTP API仕様
-- [🔌 MCP Capability Manifest](docs/mcp-capability-manifest.md) - MCP機能一覧
-- [🐳 Docker Image Documentation](docs/docker-image-documentation.md) - Docker詳細
+- [🔌 MCP Capability Manifest](docs/technical-specs/mcp-capability-manifest.md) - MCP機能一覧
+- [🌐 OpenAPI Specification](docs/technical-specs/openapi-specification.md) - HTTP API仕様
+- [📋 JSON Schema Definitions](docs/technical-specs/json-schema-definitions.md) - スキーマ定義
+- [⚙️ Expo Config](docs/technical-specs/expo.yaml) - Expo設定仕様
 
 ## ❓ トラブルシューティング
 
@@ -385,7 +427,7 @@ curl http://localhost:3000/health
 docker exec expo-mcp-server node health-check.cjs
 ```
 
-より詳細な解決方法は [Troubleshooting Guide](docs/troubleshooting.md) を参照してください。
+より詳細な解決方法は [FAQ](docs/user-guide/faq.md) を参照してください。
 
 ## 📄 ライセンス
 
@@ -400,8 +442,8 @@ MIT License - [LICENSE](LICENSE) ファイルを参照してください。
 
 ## 🏗 開発状況
 
-このプロジェクトは **Phase 6 Section 6.2** まで完了しています。  
-詳細な進捗は [Implementation Plan](docs/implementation_plan.md) で確認できます。
+このプロジェクトは **Phase 7 Section 7.2** まで進行中です。  
+詳細な進捗は [Implementation Plan](docs/implementation-reports/implementation_plan.md) で確認できます。
 
 **達成率**: 98% (CI/CD パイプライン、スタンドアローンバイナリが残存)
 

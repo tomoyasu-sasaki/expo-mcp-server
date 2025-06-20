@@ -378,11 +378,23 @@
   },
   "clientIntegration": {
     "cursor": {
-      "configPath": "~/.cursor/mcp_servers.json",
+      "configPath": "~/.cursor/mcp.json",
       "config": {
         "expo-mcp-server": {
-          "command": "expo-mcp-server",
-          "args": ["--stdio"]
+          "command": "docker",
+          "args": [
+            "run",
+            "-i",
+            "--rm",
+            "-e", "NODE_ENV=production",
+            "-e", "MCP_MODE=stdio",
+            "-e", "LOG_LEVEL=info",
+            "expo-mcp-server:latest",
+            "--stdio"
+          ],
+          "env": {
+            "NODE_ENV": "production"
+          }
         }
       }
     },
@@ -391,8 +403,17 @@
       "config": {
         "mcpServers": {
           "expo-mcp-server": {
-            "command": "expo-mcp-server",
-            "args": ["--stdio"]
+            "command": "docker",
+            "args": [
+              "run",
+              "-i",
+              "--rm",
+              "-e", "NODE_ENV=production",
+              "-e", "MCP_MODE=stdio",
+              "-e", "LOG_LEVEL=info",
+              "expo-mcp-server:latest",
+              "--stdio"
+            ]
           }
         }
       }

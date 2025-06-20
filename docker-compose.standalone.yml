@@ -1,0 +1,80 @@
+# =============================================================================
+# Expo MCP Server - 単一コンテナ構成 (シンプル版)
+# Redis、Typesenseを内蔵したオールインワン構成
+# =============================================================================
+
+version: "3.8"
+
+networks:
+  expo-mcp-simple:
+    driver: bridge
+    name: expo-mcp-simple
+
+volumes:
+  standalone_data:
+    name: expo-mcp-standalone-data
+    driver: local
+
+services:
+  # =============================================================================
+  # Expo MCP オールインワン サーバー
+  # =============================================================================
+  expo-mcp-standalone:
+    build: 
+      context: .
+      dockerfile: Dockerfile.standalone
+      target: standalone
+    
+    image: expo-mcp-server:standalone
+    container_name: expo-mcp-standalone
+    hostname: expo-mcp-standalone
+    restart: unless-stopped
+    
+    # 環境変数
+    environment:
+      NODE_ENV: production
+      MCP_MODE: http
+      LOG_LEVEL: info
+      LOCAL_STORAGE_PATH: /app/data
+      MAX_STORAGE_SIZE_GB: 10
+      # 内蔵Redis/Typesense使用
+      REDIS_URL: redis://localhost:6379
+      TYPESENSE_URL: http://localhost:8108
+      TYPESENSE_API_KEY: xyz
+      # シンプル構成用設定
+      STANDALONE_MODE: true
+      EMBEDDED_CACHE: true
+      EMBEDDED_SEARCH: true
+    
+    # ボリュームマウント
+    volumes:
+      - ./data:/app/data:rw
+      - standalone_data:/app/storage:rw
+    
+    # ポート公開
+    ports:
+      - "3000:3000"  # MCP HTTP API
+      - "6379:6379"  # Redis (必要に応じて)
+      - "8108:8108"  # Typesense (必要に応じて)
+    
+    # ネットワーク
+    networks:
+      - expo-mcp-simple
+    
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    
+    # リソース制限
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.25' 

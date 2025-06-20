@@ -1,0 +1,119 @@
+# =============================================================================
+# Expo MCP Server - 単一コンテナ版 Dockerfile
+# Node.js + Redis + Typesense を一つのコンテナで実行
+# =============================================================================
+
+FROM node:20.18.1-alpine as base
+
+# 必要なパッケージをインストール
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bash \
+    redis \
+    supervisor \
+    file \
+    && rm -rf /var/cache/apk/*
+
+# Typesenseのインストール（多アーキテクチャ対応 + セキュリティ強化）
+RUN set -ex && \
+    # プラットフォーム検出
+    ARCH=$(uname -m) && \
+    case "$ARCH" in \
+        x86_64) TYPESENSE_ARCH="linux-x86_64" ;; \
+        aarch64|arm64) TYPESENSE_ARCH="linux-aarch64" ;; \
+        *) echo "Unsupported architecture: $ARCH" >&2; exit 1 ;; \
+    esac && \
+    echo "Detected architecture: $ARCH -> Using Typesense arch: $TYPESENSE_ARCH" && \
+    \
+    # バージョンとURLの定義
+    TYPESENSE_VERSION="0.25.1" && \
+    TYPESENSE_FILE="typesense-server-${TYPESENSE_VERSION}-${TYPESENSE_ARCH}.tar.gz" && \
+    TYPESENSE_URL="https://dl.typesense.org/releases/${TYPESENSE_VERSION}/${TYPESENSE_FILE}" && \
+    \
+    # バイナリのダウンロード（リトライ機能付き）
+    echo "Downloading: $TYPESENSE_URL" && \
+    for i in 1 2 3; do \
+        wget --timeout=30 --tries=1 -O "$TYPESENSE_FILE" "$TYPESENSE_URL" && break || \
+        (echo "Download attempt $i failed, retrying..." && sleep 5); \
+    done && \
+    \
+    # 基本的な整合性検証
+    echo "Verifying downloaded file..." && \
+    test -f "$TYPESENSE_FILE" || (echo "Downloaded file not found" >&2; exit 1) && \
+    \
+    # ファイルサイズ検証（少なくとも1MB以上）
+    FILESIZE=$(stat -c%s "$TYPESENSE_FILE") && \
+    test "$FILESIZE" -gt 1000000 || (echo "File too small: $FILESIZE bytes" >&2; exit 1) && \
+    echo "File size: $FILESIZE bytes - OK" && \
+    \
+    # ファイル形式検証
+    file "$TYPESENSE_FILE" | grep -qi "gzip compressed" || \
+        (echo "File is not a valid gzip archive" >&2; exit 1) && \
+    echo "File format: gzip compressed - OK" && \
+    \
+    # 展開と検証
+    echo "Extracting archive..." && \
+    tar -xzf "$TYPESENSE_FILE" || (echo "Failed to extract archive" >&2; exit 1) && \
+    \
+    # バイナリファイルの検証
+    test -f typesense-server || (echo "typesense-server binary not found" >&2; exit 1) && \
+    test -x typesense-server || (echo "typesense-server is not executable" >&2; exit 1) && \
+    \
+    # バイナリの配置
+    mv typesense-server /usr/local/bin/ && \
+    \
+    # クリーンアップ
+    rm -f "$TYPESENSE_FILE" && \
+    \
+    # インストール確認
+    echo "Verifying installation..." && \
+    /usr/local/bin/typesense-server --version && \
+    echo "Typesense installation completed successfully"
+
+# アプリケーション用ディレクトリ作成
+WORKDIR /app
+
+# パッケージファイルをコピー
+COPY package*.json ./
+
+# 依存関係インストール
+RUN npm ci --only=production && npm cache clean --force
+
+# アプリケーションコードをコピー
+COPY . .
+
+# TypeScriptビルド
+RUN npm run build
+
+# =============================================================================
+# 本番用ステージ（standalone）
+# =============================================================================
+FROM base as standalone
+
+# supervisord設定
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Redis設定
+COPY docker/redis.conf /etc/redis/redis.conf
+
+# エントリーポイントスクリプト
+COPY docker/standalone-entrypoint.sh /usr/local/bin/standalone-entrypoint.sh
+RUN chmod +x /usr/local/bin/standalone-entrypoint.sh
+
+# データディレクトリ作成
+RUN mkdir -p /app/data /app/storage /data/redis /data/typesense \
+    && chown -R node:node /app /data
+
+# 非rootユーザーで実行
+USER node
+
+# ポート公開
+EXPOSE 3000 6379 8108
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# エントリーポイント
+ENTRYPOINT ["/usr/local/bin/standalone-entrypoint.sh"] 
