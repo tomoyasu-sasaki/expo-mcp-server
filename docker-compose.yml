@@ -153,9 +153,6 @@ services:
           memory: 256M
           cpus: '0.1'
     
-    # ログ設定
-    <<: *logging
-
   # =============================================================================
   # Redis キャッシュサーバー
   # =============================================================================
@@ -307,18 +304,4 @@ services:
     networks:
       - expo-mcp-network
 
-networks:
-  expo-mcp-network:
-    driver: bridge
-
-volumes:
-  redis_data:
-    driver: local
-  typesense_data:
-    driver: local
-  prometheus_data:
-    driver: local
-  grafana_data:
-    driver: local
-  alertmanager_data:
-    driver: local 
+# ネットワークとボリュームは既に上部で定義済み 

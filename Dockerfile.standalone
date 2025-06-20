@@ -1,0 +1,68 @@
+# =============================================================================
+# Expo MCP Server - 単一コンテナ版 Dockerfile
+# Node.js + Redis + Typesense を一つのコンテナで実行
+# =============================================================================
+
+FROM node:20.18.1-alpine as base
+
+# 必要なパッケージをインストール
+RUN apk add --no-cache \
+    curl \
+    wget \
+    bash \
+    redis \
+    supervisor \
+    && rm -rf /var/cache/apk/*
+
+# Typesenseのインストール
+RUN wget https://dl.typesense.org/releases/0.25.1/typesense-server-0.25.1-linux-x86_64.tar.gz \
+    && tar -xzf typesense-server-0.25.1-linux-x86_64.tar.gz \
+    && mv typesense-server /usr/local/bin/ \
+    && rm typesense-server-0.25.1-linux-x86_64.tar.gz
+
+# アプリケーション用ディレクトリ作成
+WORKDIR /app
+
+# パッケージファイルをコピー
+COPY package*.json ./
+
+# 依存関係インストール
+RUN npm ci --only=production && npm cache clean --force
+
+# アプリケーションコードをコピー
+COPY . .
+
+# TypeScriptビルド
+RUN npm run build
+
+# =============================================================================
+# 本番用ステージ（standalone）
+# =============================================================================
+FROM base as standalone
+
+# supervisord設定
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# Redis設定
+COPY docker/redis.conf /etc/redis/redis.conf
+
+# エントリーポイントスクリプト
+COPY docker/standalone-entrypoint.sh /usr/local/bin/standalone-entrypoint.sh
+RUN chmod +x /usr/local/bin/standalone-entrypoint.sh
+
+# データディレクトリ作成
+RUN mkdir -p /app/data /app/storage /data/redis /data/typesense \
+    && chown -R node:node /app /data
+
+# 非rootユーザーで実行
+USER node
+
+# ポート公開
+EXPOSE 3000 6379 8108
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD curl -f http://localhost:3000/health || exit 1
+
+# エントリーポイント
+ENTRYPOINT ["/usr/local/bin/standalone-entrypoint.sh"] 
