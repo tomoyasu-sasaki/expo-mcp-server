@@ -1,173 +1,289 @@
-# Expo MCP Server
+# Expo MCP Server 🚀
 
-Model Context Protocol (MCP) サーバーの実装。Expo ドキュメント、API リファレンス、コミュニティリソースからコンテンツを取得・インデックス化・検索し、Cursor や他の開発者ツールでMCPプロトコル経由で利用可能にします。
+[![npm version](https://badge.fury.io/js/expo-mcp-server.svg)](https://badge.fury.io/js/expo-mcp-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-## 🚀 機能
+Expo開発を劇的に効率化するためのModel Context Protocol (MCP) サーバーです。Cursor、Claude、その他のAIアシスタントでExpo/React Nativeアプリの開発を簡単に行えます。
 
-- **MCP Protocol 2024-11-05 準拠**: JSON-RPC 2.0 over stdio通信をサポート
-- **Expo エコシステム統合**: 公式ドキュメント、SDK API、EAS CLI
-- **高速検索**: Typesense によるタイポ耐性・ファセット検索
-- **コンテキスト認識推薦**: 埋め込みモデルによる関連コンテンツ推薦
-- **Docker対応**: 本番環境対応のコンテナ化
-- **複数トランスポート**: stdio (主要)、HTTP + SSE (フォールバック)
+## ✨ 主要機能
 
-## 📋 要件
+### 🎯 Expo開発の包括的サポート
+- **プロジェクト初期化**: テンプレート選択から設定まで瞬時にセットアップ
+- **EAS統合**: Build、Submit、Update操作をワンコマンドで実行
+- **クロスプラットフォーム**: iOS、Android、Web対応の統一開発体験
+- **開発サーバー管理**: ホットリロード、トンネリング、デバッグモード制御
 
-- **Node.js**: 18+ 
-- **npm**: 8+
-- **Docker**: 20+ (オプション)
-- **Docker Compose**: 2+ (オプション)
+### 🔧 10種類の専門ツール
+1. **Project Initializer**: Expoプロジェクトの瞬時セットアップ
+2. **Config Generator**: app.json/app.config.js最適化設定生成
+3. **Development Manager**: 開発サーバーとデバッグ環境管理
+4. **Build Manager**: EASビルドとローカルビルド統合管理
+5. **EAS Manager**: Expo Application Services完全統合
+6. **Deployment Helper**: OTA更新、Webデプロイ、ストア申請
+7. **Authentication Setup**: 認証プロバイダー統合とセキュア実装
+8. **Storage Manager**: AsyncStorage、SecureStore、SQLite統合
+9. **Navigation Helper**: Expo Router/React Navigation完全サポート
+10. **Best Practices**: コード品質分析とパフォーマンス最適化
 
-## 🛠 インストール
+## 🚀 Cursorでのクイックインストール
 
-### 1. リポジトリクローン
+### ワンクリックインストール
+次のリンクをクリックするだけでCursorにMCPサーバーをインストールできます：
 
+**[📱 Cursor に Expo MCP Server をインストール](cursor://anysphere.cursor-deeplink/mcp/install?name=expo&config=eyJjb21tYW5kIjoibnB4IiwiYXJncyI6WyIteSIsImV4cG8tbWNwLXNlcnZlciJdLCJlbnYiOnsiTk9ERV9FTlYiOiJwcm9kdWN0aW9uIn19)**
+
+### 手動インストール手順
+1. Cursorで `Cmd+Shift+P` を押下
+2. "Preferences: Open User Settings (JSON)" を選択
+3. `mcpServers` セクションに以下を追加：
+
+```json
+{
+  "mcpServers": {
+    "expo": {
+      "command": "npx",
+      "args": ["-y", "expo-mcp-server"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
+```
+
+4. Cursorを再起動
+
+## 🛠️ 基本的な使い方
+
+インストール後、Cursorで以下のコマンドを使用してExpoプロジェクトの開発を開始できます：
+
+### 新規プロジェクト作成
+```
+@expo 新しいTypeScriptプロジェクトをExpo Routerで作成して
+```
+
+### EASビルド設定
+```
+@expo EASでiOSとAndroidの本番ビルド設定を生成して
+```
+
+### 認証システム構築
+```
+@expo GoogleとAppleサインインの認証システムを実装して
+```
+
+### ナビゲーション設定
+```
+@expo タブナビゲーションとモーダル画面の構成を作成して
+```
+
+### OTA更新デプロイ
+```
+@expo 本番環境にOTA更新をデプロイして
+```
+
+## 📋 利用可能なツール詳細
+
+### 1. プロジェクト初期化 (`expo_project_init`)
+```typescript
+// 使用例
+{
+  template: 'blank-typescript',
+  projectName: 'MyAwesomeApp',
+  packageManager: 'yarn',
+  features: ['expo-router', 'expo-notifications', 'expo-auth-session'],
+  platforms: ['ios', 'android', 'web']
+}
+```
+
+### 2. 設定生成 (`expo_config_generate`)
+```typescript
+// 使用例
+{
+  platform: ['ios', 'android', 'web'],
+  environment: 'production',
+  features: ['push-notifications', 'deep-linking', 'splash-screen'],
+  buildProfile: 'production'
+}
+```
+
+### 3. 開発サーバー管理 (`expo_dev_server`)
+```typescript
+// 使用例
+{
+  platform: 'all',
+  port: 8081,
+  tunnel: true,
+  devClient: true,
+  host: 'lan'
+}
+```
+
+### 4. ビルド管理 (`expo_build`)
+```typescript
+// 使用例
+{
+  platform: 'all',
+  profile: 'production',
+  local: false,
+  autoSubmit: true
+}
+```
+
+### 5. EAS操作 (`expo_eas`)
+```typescript
+// 使用例
+{
+  operation: 'build',
+  platform: 'all',
+  profile: 'production',
+  message: 'v1.0.0 リリース',
+  autoPublish: true
+}
+```
+
+## 🎨 Expo最新機能の活用例
+
+### Expo Router (App Directory)
+```typescript
+// app/_layout.tsx
+import { Stack } from 'expo-router';
+
+export default function RootLayout() {
+  return (
+    <Stack>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+    </Stack>
+  );
+}
+```
+
+### EAS Update
 ```bash
-git clone https://github.com/expo/expo-mcp-server.git
+# 開発環境へのOTA更新
+eas update --branch development --message "新機能追加"
+
+# 本番環境への自動更新
+eas update --branch production --auto
+```
+
+### Expo Dev Client
+```typescript
+// Development builds with custom native code
+{
+  "plugins": [
+    "expo-dev-client",
+    [
+      "expo-notifications",
+      {
+        "icon": "./assets/notification-icon.png"
+      }
+    ]
+  ]
+}
+```
+
+## 🔧 開発者向け情報
+
+### ローカル開発
+```bash
+git clone <repository-url>
 cd expo-mcp-server
-```
-
-### 2. 依存関係インストール
-
-```bash
 npm install
-```
-
-### 3. 環境設定
-
-```bash
-cp .env.example .env
-# 必要に応じて .env ファイルを編集
-```
-
-### 4. ビルド
-
-```bash
 npm run build
-```
-
-## 🚀 使用方法
-
-### MCP (stdio モード)
-
-```bash
-# MCP クライアント（Cursor等）から使用
-npm run mcp:stdio
-```
-
-### HTTP モード
-
-```bash
-# 開発・テスト用
-npm run mcp:http
-```
-
-### 開発モード
-
-```bash
-# ホットリロード付き開発モード
 npm run dev
 ```
 
-## 🐳 Docker での実行
-
-### 単体実行
-
+### テスト実行
 ```bash
-# Docker イメージビルド
-npm run docker:build
-
-# MCP stdio モード
-npm run docker:mcp
-
-# HTTP モード
-npm run docker:run
-```
-
-### Docker Compose
-
-```bash
-# 全サービス起動（Redis、Typesense含む）
-docker-compose up -d
-```
-
-## 🧪 テスト
-
-```bash
-# 全テスト実行
 npm test
-
-# ウォッチモード
-npm run test:watch
-
-# MCP特有テスト
-npm run test:mcp
-
-# 型チェック
-npm run type-check
-
-# リント
-npm run lint
+npm run test:coverage
 ```
 
-## 📚 MCP ツール
-
-| ツール名 | 説明 |
-|---------|------|
-| `expo_read_document` | Expoドキュメント・APIリファレンス取得 |
-| `expo_search_documents` | エコシステム全体コンテンツ検索 |
-| `expo_recommend` | コンテキスト認識推薦 |
-| `expo_get_sdk_module` | SDK モジュール詳細情報 |
-| `expo_config_templates` | 設定ファイル生成・検証 |
-| `expo_eas_command_builder` | EAS CLI コマンド生成 |
-| `expo_code_examples` | 実行可能コード例・Snack統合 |
-| `expo_error_diagnosis` | エラー分析・解決策提供 |
-
-## 🔧 開発
-
-### ディレクトリ構造
-
-```
-expo-mcp-server/
-├── src/                 # ソースコード
-├── tests/               # テスト
-├── docs/                # ドキュメント
-├── config/              # 設定ファイル
-├── docker/              # Docker関連
-└── dist/                # ビルド出力
+### MCP Debug Mode
+```bash
+NODE_ENV=development npm start
 ```
 
-### スクリプト
+## 📦 対応するExpo機能
 
-- `npm run dev`: 開発モード
-- `npm run build`: ビルド
-- `npm run test`: テスト実行
-- `npm run lint`: リント
-- `npm run type-check`: 型チェック
+### コア機能
+- ✅ Expo SDK 50+ 完全対応
+- ✅ Expo Router (App Directory)
+- ✅ EAS Build & Submit
+- ✅ EAS Update (OTA)
+- ✅ Expo Dev Client
+- ✅ Metro bundler最適化
 
-## 📖 ドキュメント
+### プラットフォーム
+- ✅ iOS (React Native)
+- ✅ Android (React Native)
+- ✅ Web (React DOM)
+- ✅ PWA対応
 
-- [API Reference](docs/api.md)
-- [MCP Integration Guide](docs/mcp-integration.md)
-- [Docker Deployment](docs/docker.md)
-- [Contributing](docs/contributing.md)
+### ライブラリ統合
+- ✅ React Navigation
+- ✅ Expo Router
+- ✅ Expo Authentication
+- ✅ Expo Secure Store
+- ✅ Expo SQLite
+- ✅ Expo Notifications
+- ✅ Expo Location
+- ✅ Expo Camera
+- ✅ Expo AV
+
+## 🌟 Expo開発ベストプラクティス
+
+### パフォーマンス最適化
+1. **バンドルサイズ削減**: 不要なモジュールの除去
+2. **画像最適化**: WebP形式とレスポンシブ画像
+3. **レンダリング最適化**: FlatList、memo、useMemo活用
+4. **OTA更新戦略**: 段階的ロールアウト
+
+### セキュリティ強化
+1. **SecureStore使用**: 機密データの暗号化保存
+2. **証明書ピニング**: ネットワーク通信のセキュリティ
+3. **コード難読化**: リリースビルドの保護
+4. **権限管理**: 最小権限の原則
+
+### 開発効率向上
+1. **TypeScript活用**: 型安全性とIDE支援
+2. **ESLint/Prettier**: コード品質とフォーマット統一
+3. **Storybook**: コンポーネント開発
+4. **E2Eテスト**: Detox/Maestroでの自動テスト
 
 ## 🤝 貢献
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+プルリクエストを歓迎します！以下の手順で貢献してください：
+
+1. このリポジトリをフォーク
+2. フィーチャーブランチを作成 (`git checkout -b feature/amazing-feature`)
+3. コミット (`git commit -m 'Add amazing feature'`)
+4. プッシュ (`git push origin feature/amazing-feature`)
+5. プルリクエストを作成
 
 ## 📄 ライセンス
 
-MIT License - see [LICENSE](LICENSE) file for details.
+このプロジェクトはMITライセンスの下で公開されています。詳細は [LICENSE](LICENSE) ファイルを参照してください。
 
-## 🏗 開発状況
+## 🆘 サポート
 
-このプロジェクトは開発中です。[implementation_plan.md](implementation_plan.md) で進捗を確認できます。
+問題が発生した場合：
+
+1. [Issues](https://github.com/your-username/expo-mcp-server/issues) で既存の問題を確認
+2. 新しいissueを作成
+3. 詳細な再現手順を含めて報告
+
+## 🔗 関連リンク
+
+- [Expo Documentation](https://docs.expo.dev/)
+- [EAS Documentation](https://docs.expo.dev/eas/)
+- [Expo Router Documentation](https://expo.github.io/router/)
+- [Model Context Protocol](https://spec.modelcontextprotocol.io/)
+- [Cursor Documentation](https://docs.cursor.com/)
+- [React Native Documentation](https://reactnative.dev/)
 
 ---
 
-**Expo DevRel Team** | [GitHub](https://github.com/expo/expo-mcp-server) | [Issues](https://github.com/expo/expo-mcp-server/issues) 
+**Expo MCP Server** で次世代のモバイル/Web開発体験を始めましょう！ 🚀✨ 
