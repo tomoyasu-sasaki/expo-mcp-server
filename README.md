@@ -41,12 +41,16 @@ Expo開発を劇的に効率化するためのModel Context Protocol (MCP) サ�
 {
   "mcpServers": {
     "expo": {
-      "command": "npx",
-      "args": ["-y", "expo-mcp-server"],
+      "command": "node",
+      "args": [
+        "{{path}}/expo-mcp-server/dist/index.js"
+      ],
       "env": {
         "NODE_ENV": "production"
-      }
-    }
+      },
+      "disabled": false,
+      "autoApprove": []
+    },
   }
 }
 ```
