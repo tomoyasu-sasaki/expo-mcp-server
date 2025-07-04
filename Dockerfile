@@ -129,8 +129,8 @@ HEALTHCHECK --interval=30s --timeout=10s --retries=3 --start-period=40s \
 VOLUME ["/app/data", "/app/cache", "/app/logs"]
 
 # エントリーポイント設定 (tini でシグナルハンドリング強化)
-ENTRYPOINT ["tini", "--"]
-CMD ["./entrypoint.sh"]
+ENTRYPOINT ["tini", "--", "./entrypoint.sh"]
+CMD ["--stdio"]
 
 # =============================================================================
 # Metadata for signing and security

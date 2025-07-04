@@ -3,42 +3,6 @@
 # マルチアーキテクチャ & セキュリティ強化 & 署名検証対応
 # =============================================================================
 
-version: "3.8"
-
-# ネットワーク定義
-networks:
-  expo-mcp-network:
-    driver: bridge
-    name: expo-mcp-network
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.20.0.0/16
-
-# ボリューム定義
-volumes:
-  redis_data:
-    name: expo-mcp-redis-data
-    driver: local
-  typesense_data:
-    name: expo-mcp-typesense-data
-    driver: local
-  app_cache:
-    name: expo-mcp-app-cache
-    driver: local
-  local_data:
-    name: expo-mcp-local-data
-    driver: local
-  prometheus_data:
-    name: expo-mcp-prometheus-data
-    driver: local
-  grafana_data:
-    name: expo-mcp-grafana-data
-    driver: local
-  alertmanager_data:
-    name: expo-mcp-alertmanager-data
-    driver: local
-
 # 共通設定
 x-common-variables: &common-variables
   TZ: UTC
@@ -153,9 +117,6 @@ services:
           memory: 256M
           cpus: '0.1'
     
-    # ログ設定
-    <<: *logging
-
   # =============================================================================
   # Redis キャッシュサーバー
   # =============================================================================
@@ -307,18 +268,40 @@ services:
     networks:
       - expo-mcp-network
 
+# =============================================================================
+# ネットワーク定義（トップレベル）
+# =============================================================================
 networks:
   expo-mcp-network:
     driver: bridge
+    name: expo-mcp-network
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.20.0.0/16
 
+# =============================================================================
+# ボリューム定義（トップレベル）
+# =============================================================================
 volumes:
   redis_data:
+    name: expo-mcp-redis-data
     driver: local
   typesense_data:
+    name: expo-mcp-typesense-data
+    driver: local
+  app_cache:
+    name: expo-mcp-app-cache
+    driver: local
+  local_data:
+    name: expo-mcp-local-data
     driver: local
   prometheus_data:
+    name: expo-mcp-prometheus-data
     driver: local
   grafana_data:
+    name: expo-mcp-grafana-data
     driver: local
   alertmanager_data:
-    driver: local 
+    name: expo-mcp-alertmanager-data
+    driver: local
